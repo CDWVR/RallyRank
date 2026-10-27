@@ -4,10 +4,10 @@ providers = ["node"]
 [variables]
 # Vite lives in devDependencies; Railway often sets production=true during install
 NPM_CONFIG_PRODUCTION = "false"
-NIXPACKS_NODE_VERSION = "20"
+NIXPACKS_NODE_VERSION = "24"
 
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm-10_x"]
+nixPkgs = ["nodejs_24", "npm-10_x"]
 
 # Single install only — do not also run npm ci in railway.toml buildCommand
 [phases.install]
