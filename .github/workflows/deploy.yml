@@ -38,7 +38,7 @@ jobs:
       - name: Build
         run: npm run build
         env:
-          VITE_BASE_URL: "/RallyRank-Badminton-AI-Player-Ranker/"
+          VITE_BASE_URL: "/${{ github.event.repository.name }}/"
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 
@@ -59,10 +59,21 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Check Supabase secrets
+        # The app throws on load without these, which ships a blank page. Fail here instead.
+        run: |
+          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "::error::Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+
       - name: Build (GitHub Pages subpath)
         run: npm run build
         env:
-          VITE_BASE_URL: "/RallyRank-Badminton-AI-Player-Ranker/"
+          VITE_BASE_URL: "/${{ github.event.repository.name }}/"
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
 

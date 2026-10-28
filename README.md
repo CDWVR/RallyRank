@@ -3,7 +3,7 @@
 Fair badminton club ladders — invite your club, balance sessions, log matches, trust Elo.
 
 **Full product reference:** [`docs/REFERENCE.md`](docs/REFERENCE.md)  
-**Branch:** [`product-revamp`](https://github.com/sip013/RallyRank-Badminton-AI-Player-Ranker/tree/product-revamp)
+**Branch:** [`product-revamp`](https://github.com/CDWVR/RallyRank/tree/product-revamp)
 
 ## Features
 
