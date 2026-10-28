@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useClub } from '@/context/ClubContext';
 import type { Player } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
+import { overallWinRate } from '@/lib/ladderStats';
 import { toast } from 'sonner';
 
 const PlayerProfilePage: React.FC = () => {
@@ -95,6 +96,8 @@ const PlayerProfilePage: React.FC = () => {
   if (!player) {
     return <p className="text-muted-foreground">Loading player…</p>;
   }
+
+  const winRate = overallWinRate(player);
 
   const chartData = history.map((h, i) => ({
     i: i + 1,
@@ -178,7 +181,7 @@ const PlayerProfilePage: React.FC = () => {
         <div className="surface-panel p-4">
           <p className="text-xs uppercase text-muted-foreground">Win rate</p>
           <p className="font-display text-2xl font-bold">
-            {player.win_rate != null ? `${Math.round(player.win_rate)}%` : '—'}
+            {winRate != null ? `${winRate}%` : '—'}
           </p>
         </div>
         <div className="surface-panel p-4">

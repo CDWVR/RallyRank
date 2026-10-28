@@ -35,6 +35,21 @@ export function playerForm(
   return results.reverse().join('');
 }
 
+/**
+ * Win rate across both formats, as a whole percentage, or null with no matches.
+ * `win_rate` on the player row only counts singles, so a doubles-only player would show 0%.
+ */
+export function overallWinRate(p: {
+  wins: number | null;
+  matches_played: number | null;
+  doubles_wins: number | null;
+  doubles_matches_played: number | null;
+}): number | null {
+  const played = (p.matches_played ?? 0) + (p.doubles_matches_played ?? 0);
+  if (played <= 0) return null;
+  return Math.round((((p.wins ?? 0) + (p.doubles_wins ?? 0)) / played) * 100);
+}
+
 export type HeadToHead = {
   a: string;
   b: string;
