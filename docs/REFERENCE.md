@@ -1,6 +1,6 @@
 # RallyRank — Product Reference
 
-Default branch: [`main`](https://github.com/sip013/RallyRank-Badminton-AI-Player-Ranker/tree/main)  
+Default branch: [`main`](https://github.com/CDWVR/RallyRank/tree/main)  
 Stack: Vite · React · TypeScript · Tailwind · shadcn/ui · Supabase (Auth, Postgres, RLS, RPCs)
 
 This document is the canonical reference for architecture, routes, data model, auth, and operator setup for the club-first RallyRank product.
@@ -297,7 +297,7 @@ Scripts: `npm run build` · `npm run lint` · `npm run typecheck`
 - Root [`README.md`](../README.md) — quick setup  
 - [`ROADMAP.md`](./ROADMAP.md) — full product backlog  
 - Migrations under `supabase/migrations/`  
-- Repo: [main](https://github.com/sip013/RallyRank-Badminton-AI-Player-Ranker/tree/main)
+- Repo: [main](https://github.com/CDWVR/RallyRank/tree/main)
 
 ---
 

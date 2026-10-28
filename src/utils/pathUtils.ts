@@ -3,28 +3,10 @@
  */
 
 /**
- * Get the base URL for the application
- * This is used for resolving static assets and navigation
+ * Base path the app is served from, without a trailing slash: '' locally, '/RallyRank' on GitHub Pages.
+ * Comes from Vite's `base` (VITE_BASE_URL at build time), so it is right on every page, not just the home page.
  */
-export const getBaseUrl = (): string => {
-  // Check if we're in production (GitHub Pages)
-  if (import.meta.env.PROD) {
-    // Get the current pathname
-    const pathname = window.location.pathname;
-    
-    // Extract the repository name from the pathname
-    // Format: /username/repository-name/
-    const match = pathname.match(/^\/([^/]+)\/([^/]+)/);
-    
-    if (match) {
-      // Return the full base path including the repository name
-      return `/${match[1]}/${match[2]}`;
-    }
-  }
-  
-  // Default to root path for development
-  return '';
-};
+export const getBaseUrl = (): string => import.meta.env.BASE_URL.replace(/\/$/, '');
 
 /**
  * Resolve a path relative to the base URL
@@ -32,11 +14,6 @@ export const getBaseUrl = (): string => {
  * @returns The resolved path
  */
 export const resolvePath = (path: string): string => {
-  const baseUrl = getBaseUrl();
-  
-  // Ensure path starts with a slash
   const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  
-  // Combine base URL and path
-  return `${baseUrl}${normalizedPath}`;
-}; 
+  return `${getBaseUrl()}${normalizedPath}`;
+};
