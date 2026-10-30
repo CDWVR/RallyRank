@@ -237,7 +237,7 @@ class QueryBuilder {
     mutateDb((db) => {
       const table = getTable(db, this.table);
       for (const row of rowsIn) {
-        const next = {
+        const next: Record<string, unknown> = {
           ...row,
           id: (row.id as string) || uid(),
           created_at: (row.created_at as string) || t,

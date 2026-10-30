@@ -1,4 +1,4 @@
-import type { AuthError, Session, User, AuthChangeEvent } from '@supabase/supabase-js';
+import type { AuthApi, AuthChangeEvent, AuthError, AuthListener, AuthSession, AuthUser } from '../authTypes';
 import { ensureDemoClub } from './seed';
 import {
   loadDb,
@@ -10,55 +10,30 @@ import {
   type LocalSessionBlob,
 } from './store';
 
-type AuthListener = (event: AuthChangeEvent, session: Session | null) => void;
-
 const listeners = new Set<AuthListener>();
 
 function authError(message: string): AuthError {
-  return { name: 'AuthApiError', message, status: 400 } as AuthError;
+  return { name: 'AuthApiError', message, status: 400 };
 }
 
-function toUser(blob: { id: string; email: string }): User {
-  const t = nowIso();
-  return {
-    id: blob.id,
-    email: blob.email,
-    app_metadata: {},
-    user_metadata: {},
-    aud: 'authenticated',
-    created_at: t,
-    email_confirmed_at: t,
-    identities: [
-      {
-        id: blob.id,
-        user_id: blob.id,
-        identity_data: {},
-        provider: 'email',
-        created_at: t,
-        last_sign_in_at: t,
-        updated_at: t,
-      },
-    ],
-  } as User;
+function toUser(blob: { id: string; email: string }): AuthUser {
+  return { id: blob.id, email: blob.email, user_metadata: {}, created_at: nowIso() };
 }
 
-function toSession(blob: LocalSessionBlob): Session {
-  const user = toUser({ id: blob.user_id, email: blob.email });
+function toSession(blob: LocalSessionBlob): AuthSession {
   return {
     access_token: blob.access_token,
-    refresh_token: 'local-refresh',
-    expires_in: 60 * 60 * 24 * 365,
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
     token_type: 'bearer',
-    user,
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365,
+    user: toUser({ id: blob.user_id, email: blob.email }),
   };
 }
 
-function emit(event: AuthChangeEvent, session: Session | null) {
+function emit(event: AuthChangeEvent, session: AuthSession | null) {
   listeners.forEach((fn) => fn(event, session));
 }
 
-function currentSession(): Session | null {
+function currentSession(): AuthSession | null {
   const blob = loadSession();
   return blob ? toSession(blob) : null;
 }
@@ -67,7 +42,7 @@ export function getLocalAuthUid(): string | null {
   return loadSession()?.user_id ?? null;
 }
 
-export const localAuth = {
+export const localAuth: AuthApi = {
   async getSession() {
     return { data: { session: currentSession() }, error: null };
   },
@@ -158,20 +133,9 @@ export const localAuth = {
     return { data: { user: session.user, session }, error: null };
   },
 
-  async signInWithOAuth() {
-    return {
-      data: { provider: 'google', url: null },
-      error: authError('Google sign-in is not available in local mode. Use email and password.'),
-    };
-  },
-
   async signOut() {
     saveSession(null);
     emit('SIGNED_OUT', null);
     return { error: null };
-  },
-
-  async resend() {
-    return { data: {}, error: null };
   },
 };

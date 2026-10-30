@@ -12,8 +12,6 @@ import AppShell from '@/components/layout/AppShell';
 import LandingPage from '@/pages/marketing/LandingPage';
 import PublicLadderPage from '@/pages/marketing/PublicLadderPage';
 import AuthPage from '@/pages/auth/AuthPage';
-import AuthCallbackPage from '@/pages/auth/AuthCallbackPage';
-import VerifyEmailPage from '@/pages/auth/VerifyEmailPage';
 import OnboardingPage from '@/pages/onboarding/OnboardingPage';
 import JoinClubPage from '@/pages/onboarding/JoinClubPage';
 import HomePage from '@/pages/app/HomePage';
@@ -62,8 +60,9 @@ const App = () => (
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/auth" element={<AuthPage />} />
-            <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            <Route path="/auth/verify-email" element={<VerifyEmailPage />} />
+            {/* Old email-verification links from the Supabase era. */}
+            <Route path="/auth/callback" element={<Navigate to="/auth" replace />} />
+            <Route path="/auth/verify-email" element={<Navigate to="/auth" replace />} />
             <Route path="/ladder/:token" element={<PublicLadderPage />} />
 
             <Route

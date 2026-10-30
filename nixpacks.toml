@@ -1,4 +1,3 @@
-# Force Node — without this, Nixpacks detects Deno from supabase/functions/
 providers = ["node"]
 
 [variables]

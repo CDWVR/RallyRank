@@ -1,5 +1,6 @@
-# Railway: static Vite SPA
-# Variables (build-time): VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, VITE_BASE_URL=/
+# Railway "web" service: Node server that serves the SPA, the auth API and the /rest proxy.
+# Needs a Postgres service and a PostgREST service in the same project; see docs/DEPLOY-RAILWAY.md.
+# Variables: DATABASE_URL, AUTHENTICATOR_PASSWORD, JWT_SECRET, POSTGREST_URL (PORT is set by Railway).
 #
 # Install + build are owned by nixpacks.toml only.
 # Do not set buildCommand to "npm ci && …" — that double-runs npm ci and causes EBUSY.
@@ -9,6 +10,8 @@ builder = "NIXPACKS"
 nixpacksConfigPath = "nixpacks.toml"
 
 [deploy]
+# Applies pending db/migrations before the new version takes traffic; a failed migration aborts the deploy.
+preDeployCommand = ["npm run migrate"]
 startCommand = "npm start"
 healthcheckPath = "/"
 restartPolicyType = "ON_FAILURE"

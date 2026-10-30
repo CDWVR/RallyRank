@@ -36,3 +36,56 @@ jobs:
 
       - name: Remediation invariants
         run: npm run check:remediation
+
+  server-integration:
+    runs-on: ubuntu-latest
+    # Same stack as docker-compose.yml: migrations, auth API, PostgREST and RLS checked against real Postgres.
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/rallyrank
+      AUTHENTICATOR_PASSWORD: authenticator-ci-password
+      JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789
+      POSTGREST_URL: http://localhost:3001
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: rallyrank
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d rallyrank"
+          --health-interval 2s --health-retries 30
+      postgrest:
+        image: postgrest/postgrest:v12.2.12
+        env:
+          # Retries until the migrate step below has created this role.
+          PGRST_DB_URI: postgres://authenticator:authenticator-ci-password@db:5432/rallyrank
+          PGRST_DB_SCHEMAS: public
+          PGRST_DB_ANON_ROLE: anon
+          PGRST_JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789
+          PGRST_JWT_AUD: authenticated
+          PGRST_SERVER_PORT: 3001
+        ports: ["3001:3001"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.22.1"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Migrate (twice, to prove it is idempotent)
+        run: npm run migrate && npm run migrate
+
+      - name: Wait for PostgREST
+        run: |
+          for i in $(seq 1 30); do curl -sf http://localhost:3001/ > /dev/null && exit 0; sleep 1; done
+          echo "::error::PostgREST did not become ready"; exit 1
+
+      - name: Server integration tests
+        run: npx vitest run server

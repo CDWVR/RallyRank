@@ -39,8 +39,7 @@ jobs:
         run: npm run build
         env:
           VITE_BASE_URL: "/${{ github.event.repository.name }}/"
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_BACKEND: local
 
   build:
     if: github.event_name != 'pull_request'
@@ -59,23 +58,13 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Check Supabase secrets
-        # The app throws on load without these, which ships a blank page. Fail here instead.
-        run: |
-          if [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "::error::Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY under Settings → Secrets and variables → Actions."
-            exit 1
-          fi
-        env:
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
-
-      - name: Build (GitHub Pages subpath)
+      # Pages is static hosting with no server, so this build keeps data in the visitor's browser.
+      # The real backend runs on Railway (see docs/DEPLOY-RAILWAY.md).
+      - name: Build (GitHub Pages subpath, in-browser data)
         run: npm run build
         env:
           VITE_BASE_URL: "/${{ github.event.repository.name }}/"
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_BACKEND: local
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3

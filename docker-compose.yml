@@ -1,0 +1,36 @@
+# Local backend for development: Postgres + PostgREST, mirroring the Railway services.
+# Values match .env.example; they are local-only dev credentials.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rallyrank
+    ports:
+      - "54322:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d rallyrank"]
+      interval: 2s
+      retries: 30
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.12
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:authenticator-dev-password@db:5432/rallyrank
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: dev-only-jwt-secret-change-me-0123456789abcdef
+      PGRST_JWT_AUD: authenticated
+      PGRST_SERVER_PORT: 3001
+    ports:
+      - "3001:3001"
+    # PostgREST retries its connection until `npm run migrate` has created the authenticator role.
+    restart: unless-stopped
+
+volumes:
+  db-data:

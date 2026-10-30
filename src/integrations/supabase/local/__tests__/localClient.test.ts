@@ -15,14 +15,14 @@ describe('local supabase client', () => {
     });
     expect(error).toBeNull();
     expect(data.session?.user.email).toBe('dev@example.com');
-    expect(data.user?.email_confirmed_at).toBeTruthy();
+    expect(data.session?.access_token).toBeTruthy();
 
     const { data: memberships, error: mErr } = await client
       .from('memberships')
       .select('*')
       .eq('user_id', data.user!.id);
     expect(mErr).toBeNull();
-    expect(memberships?.length).toBe(1);
+    expect(memberships).toHaveLength(1);
 
     const clubId = (memberships as { club_id: string }[])[0].club_id;
     const { data: players, error: pErr } = await client

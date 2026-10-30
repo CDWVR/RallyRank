@@ -1,7 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
-import { isEmailConfirmed, savePostAuthRedirect } from '@/lib/authHelpers';
+import { savePostAuthRedirect } from '@/lib/authHelpers';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -30,17 +30,6 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         to={`/auth?redirect=${encodeURIComponent(redirect)}`}
         replace
         state={{ from: redirect }}
-      />
-    );
-  }
-
-  if (!isEmailConfirmed(user)) {
-    const redirect = `${location.pathname}${location.search}`;
-    savePostAuthRedirect(redirect);
-    return (
-      <Navigate
-        to={`/auth/verify-email?email=${encodeURIComponent(user.email || '')}&redirect=${encodeURIComponent(redirect)}`}
-        replace
       />
     );
   }

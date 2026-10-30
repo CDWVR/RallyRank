@@ -1,24 +1,12 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from './types';
 import { createLocalClient } from './local/client';
+import { createRemoteClient, type AppClient } from './remote/client';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
+/**
+ * `VITE_BACKEND=local` keeps all data in this browser (offline demo / GitHub Pages).
+ * Otherwise the app talks to its own server: PostgREST at /rest and auth at /api/auth.
+ */
+export const isLocalSupabase = import.meta.env.VITE_BACKEND === 'local';
 
-const SUPABASE_KEY =
-  (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
-  (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
-
-function looksConfigured(url?: string, key?: string): boolean {
-  if (!url?.trim() || !key?.trim()) return false;
-  if (/YOUR_PROJECT|example\.supabase|localhost-placeholder/i.test(url)) return false;
-  if (/^sb_publishable_x+$/i.test(key) || key.includes('xxxxxxxx')) return false;
-  return true;
-}
-
-export const isLocalSupabase = !looksConfigured(SUPABASE_URL, SUPABASE_KEY);
-
-export const supabase = (
-  isLocalSupabase
-    ? createLocalClient()
-    : createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!)
-) as SupabaseClient<Database>;
+export const supabase: AppClient = isLocalSupabase
+  ? (createLocalClient() as unknown as AppClient)
+  : createRemoteClient();

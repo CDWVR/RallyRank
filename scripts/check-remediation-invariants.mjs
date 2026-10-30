@@ -7,7 +7,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const migrations = join(root, 'supabase', 'migrations');
+const migrations = join(root, 'db', 'migrations');
 
 function mustContain(file, needles) {
   const path = join(migrations, file);
@@ -29,10 +29,8 @@ mustContain('20260322196000_db005_restore_streak_on_undo.sql', [
   'streak_count = coalesce(r.streak_before, 0)',
 ]);
 
-const updateRatingsDir = join(root, 'supabase', 'functions', 'update-ratings');
-if (existsSync(updateRatingsDir)) {
-  throw new Error('update-ratings edge function must stay removed (L-02 dead code)');
-}
+// SEC-001: role guards (`club_role(x) not in (...)`) only fail closed if club_role never returns NULL.
+mustContain('20260323000000_sec001_club_role_fail_closed.sql', ["'none'"]);
 
 const matchNew = readFileSync(join(root, 'src', 'pages', 'app', 'MatchNewPage.tsx'), 'utf8');
 for (const key of ['p_session_id', 'p_session_note', 'p_is_disputed']) {

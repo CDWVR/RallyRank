@@ -1,13 +1,11 @@
-import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import type { AuthSession as Session, AuthUser as User } from '@/integrations/supabase/authTypes';
 import { supabase } from '@/integrations/supabase/client';
-import { isEmailConfirmed } from '@/lib/authHelpers';
 
 type AuthContextType = {
   session: Session | null;
   user: User | null;
   isLoading: boolean;
-  emailConfirmed: boolean;
   signOut: () => Promise<void>;
 };
 
@@ -15,7 +13,6 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   user: null,
   isLoading: true,
-  emailConfirmed: false,
   signOut: async () => {},
 });
 
@@ -54,13 +51,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const emailConfirmed = useMemo(() => isEmailConfirmed(user), [user]);
-
   const value = {
     session,
     user,
     isLoading,
-    emailConfirmed,
     signOut,
   };
 
