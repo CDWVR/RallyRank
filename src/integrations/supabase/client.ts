@@ -1,26 +1,24 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { createLocalClient } from './local/client';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 
-// Prefer the new publishable key; fall back to legacy anon only during migration.
 const SUPABASE_KEY =
   (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined) ||
   (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined);
 
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-  throw new Error(
-    'Missing VITE_SUPABASE_URL or VITE_SUPABASE_PUBLISHABLE_KEY. Copy .env.example to .env and paste values from Supabase → Settings → API Keys.'
-  );
+function looksConfigured(url?: string, key?: string): boolean {
+  if (!url?.trim() || !key?.trim()) return false;
+  if (/YOUR_PROJECT|example\.supabase|localhost-placeholder/i.test(url)) return false;
+  if (/^sb_publishable_x+$/i.test(key) || key.includes('xxxxxxxx')) return false;
+  return true;
 }
 
-if (
-  !import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY &&
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-) {
-  console.warn(
-    'RallyRank: using legacy VITE_SUPABASE_ANON_KEY. Switch to VITE_SUPABASE_PUBLISHABLE_KEY (sb_publishable_...) before anon keys are removed.'
-  );
-}
+export const isLocalSupabase = !looksConfigured(SUPABASE_URL, SUPABASE_KEY);
 
-export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_KEY);
+export const supabase = (
+  isLocalSupabase
+    ? createLocalClient()
+    : createClient<Database>(SUPABASE_URL!, SUPABASE_KEY!)
+) as SupabaseClient<Database>;

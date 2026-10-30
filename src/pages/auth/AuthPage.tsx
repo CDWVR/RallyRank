@@ -18,6 +18,7 @@ import {
 } from '@/lib/authHelpers';
 import { cn } from '@/lib/utils';
 
+
 const AuthPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -136,7 +137,7 @@ const AuthPage: React.FC = () => {
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     });

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +25,7 @@ import type { Player, SessionTemplate } from '@/integrations/supabase/types';
 import { balanceTeams, teamRating, winChance } from '@/lib/teamBalance';
 import { saveSessionTeamsPrefill, SESSION_ATTENDEES_KEY } from '@/lib/sessionPrefill';
 import { buildSessionSummary, type SessionSummary } from '@/lib/sessionSummary';
+
 import {
   emptyCourts,
   parseCourts,
@@ -59,6 +60,7 @@ const SessionPage: React.FC = () => {
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [guestName, setGuestName] = useState('');
   const [appliedTemplateId, setAppliedTemplateId] = useState<string>('');
+  const trackedSessionId = useRef<string | null>(null);
 
   const { data: sessionTemplates = [] } = useQuery({
     queryKey: ['session_templates', club?.id],
@@ -105,6 +107,7 @@ const SessionPage: React.FC = () => {
       return data as ClubSession;
     },
   });
+
 
   useEffect(() => {
     setHydrated(false);

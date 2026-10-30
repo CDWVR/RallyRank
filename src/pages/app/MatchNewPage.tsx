@@ -20,6 +20,7 @@ import { Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SESSION_TEAMS_KEY } from '@/lib/sessionPrefill';
 
+
 const MAX_SCORE = 30;
 
 const ScoreField: React.FC<{
@@ -243,7 +244,9 @@ const MatchNewPage: React.FC = () => {
         toast.success(`Match logged — ${formatLabel} ratings updated`);
       }
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => {
+      toast.error(e.message);
+    },
   });
 
   const displayRating = (p: Player) => (doubles ? p.doubles_rating : p.rating);
