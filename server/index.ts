@@ -5,15 +5,18 @@ import { serve } from '@hono/node-server';
 import pg from 'pg';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
-import { checkHealth } from './health.ts';
-import { runMigrations } from './migrate.ts';
+import { checkHealth, diagnoseDbError } from './health.ts';
+import { MigrationError, runMigrations } from './migrate.ts';
 
 const config = loadConfig();
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL, max: 10, connectionTimeoutMillis: 5_000 });
 pool.on('error', (err) => console.error('Postgres pool error:', err));
 
+let migrationProblem: string | null = null;
+
 const app = createApp({
   pool,
+  migrationProblem: () => migrationProblem,
   jwtSecret: config.JWT_SECRET,
   postgrestUrl: config.POSTGREST_URL,
   distDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist'),
@@ -33,10 +36,14 @@ try {
   });
 } catch (err) {
   console.error('Startup migrations failed:', err);
+  migrationProblem =
+    err instanceof MigrationError
+      ? `Migration ${err.migration} failed at startup; see "Startup migrations failed" in the server logs.`
+      : (diagnoseDbError(err) ?? 'Startup migrations failed; see the server logs.');
 }
 
 // Say at boot what is still wrong, instead of leaving it to the first sign-in to fail.
-void checkHealth(pool, config.POSTGREST_URL).then(({ database, postgrest }) => {
+void checkHealth(pool, config.POSTGREST_URL, migrationProblem).then(({ database, postgrest }) => {
   if (!database.ok) console.error(`Startup check: ${database.problem}`);
   if (!postgrest.ok) console.error(`Startup check: ${postgrest.problem}`);
 });

@@ -9,6 +9,18 @@ import pg from 'pg';
 const MIGRATIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'db', 'migrations');
 // Arbitrary constant: concurrent runners (pre-deploy step, server boot, a second replica) take turns.
 const LOCK_KEY = 727_311_001;
+// How long to wait for another runner's migrations; well above the slowest migration we expect.
+const LOCK_WAIT = '120s';
+
+/** A migration file failed; `migration` names it without exposing the database's error text. */
+export class MigrationError extends Error {
+  readonly migration: string;
+
+  constructor(migration: string, cause: Error) {
+    super(`Migration ${migration} failed: ${cause.message}`, { cause });
+    this.migration = migration;
+  }
+}
 
 export interface MigrateOptions {
   databaseUrl: string;
@@ -19,11 +31,15 @@ export interface MigrateOptions {
 
 /** Returns the names of the migrations it applied. Throws, naming the file, if one fails. */
 export async function runMigrations({ databaseUrl, authenticatorPassword, log = console.log }: MigrateOptions): Promise<string[]> {
-  const client = new pg.Client({ connectionString: databaseUrl });
+  // Bounded so a database that accepts TCP but never answers can't hold up server startup forever.
+  const client = new pg.Client({ connectionString: databaseUrl, connectionTimeoutMillis: 10_000 });
   await client.connect();
   const applied: string[] = [];
   try {
+    // lock_timeout also bounds advisory-lock waits; reset it so it doesn't apply to the migration DDL.
+    await client.query(`set lock_timeout = '${LOCK_WAIT}'`);
     await client.query('select pg_advisory_lock($1)', [LOCK_KEY]);
+    await client.query('set lock_timeout = default');
     await client.query(`
       create schema if not exists ops;
       create table if not exists ops.schema_migrations (
@@ -50,7 +66,7 @@ export async function runMigrations({ databaseUrl, authenticatorPassword, log = 
         log(`applied ${name}`);
       } catch (err) {
         await client.query('rollback');
-        throw new Error(`Migration ${name} failed: ${(err as Error).message}`);
+        throw new MigrationError(name, err as Error);
       }
     }
     if (pending.length === 0) log('database is up to date');
