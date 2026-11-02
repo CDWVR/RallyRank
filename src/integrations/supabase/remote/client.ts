@@ -9,12 +9,23 @@ function withBearer(init: RequestInit | undefined, token: string | null): Reques
   return { ...init, headers };
 }
 
+// A 401 that survives a refresh means PostgREST rejects even fresh tokens (a server-side JWT secret or
+// audience mismatch). Refreshing again can't help, and doing it on every request turned into a
+// refresh -> re-render -> request loop (hundreds of refreshes per second), so allow one per window.
+export const REFRESH_ON_401_COOLDOWN_MS = 30_000;
+
 /** fetch for PostgREST: attaches the access token and, if the server says it expired, refreshes once and retries. */
-export function createAuthedFetch(remote: Pick<RemoteAuth, 'getAccessToken' | 'refresh'>): typeof fetch {
+export function createAuthedFetch(
+  remote: Pick<RemoteAuth, 'getAccessToken' | 'refresh'>,
+  now: () => number = Date.now
+): typeof fetch {
+  let lastRefreshAt = -Infinity;
   return async (input, init) => {
     const token = await remote.getAccessToken();
     const res = await fetch(input, withBearer(init, token));
     if (res.status !== 401 || !token) return res;
+    if (now() - lastRefreshAt < REFRESH_ON_401_COOLDOWN_MS) return res;
+    lastRefreshAt = now();
     const fresh = await remote.refresh();
     return fresh ? fetch(input, withBearer(init, fresh.access_token)) : res;
   };

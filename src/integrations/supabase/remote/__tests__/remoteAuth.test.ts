@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRemoteAuth } from '../auth';
-import { createAuthedFetch } from '../client';
+import { createAuthedFetch, REFRESH_ON_401_COOLDOWN_MS } from '../client';
 
 const user = { id: 'u1', email: 'a@example.test', user_metadata: {}, created_at: '2026-01-01T00:00:00Z' };
 
@@ -125,5 +125,21 @@ describe('authed fetch for PostgREST', () => {
     const signedIn = createAuthedFetch({ getAccessToken: async () => 'stale', refresh });
     expect((await signedIn('/rest/clubs')).status).toBe(401);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes on 401 at most once per cooldown, so a server rejecting fresh tokens cannot cause a loop', async () => {
+    // PostgREST with a mismatched JWT secret: every request is 401, even with a just-issued token.
+    const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
+    vi.stubGlobal('fetch', fetchMock);
+    let clock = 1_000_000;
+    const refresh = vi.fn().mockResolvedValue(session('fresh'));
+    const authed = createAuthedFetch({ getAccessToken: async () => 'tok', refresh }, () => clock);
+
+    for (let i = 0; i < 20; i++) expect((await authed('/rest/clubs')).status).toBe(401);
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    clock += REFRESH_ON_401_COOLDOWN_MS;
+    await authed('/rest/clubs');
+    expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

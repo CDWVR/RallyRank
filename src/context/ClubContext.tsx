@@ -23,6 +23,8 @@ const ACTIVE_CLUB_KEY = 'rallyrank.activeClubId';
 
 export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  // Keyed on the id, not the object: a session refresh must not reload every club query.
+  const userId = user?.id ?? null;
   const [clubs, setClubs] = useState<Club[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeClubId, setActiveClubIdState] = useState<string | null>(
@@ -32,7 +34,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshClubs = useCallback(async () => {
-    if (!user) {
+    if (!userId) {
       setClubs([]);
       setMemberships([]);
       setSeason(null);
@@ -44,7 +46,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: memberRows, error: memberError } = await supabase
       .from('memberships')
       .select('*')
-      .eq('user_id', user.id);
+      .eq('user_id', userId);
 
     if (memberError) {
       console.error(memberError);
@@ -85,7 +87,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (nextId) localStorage.setItem(ACTIVE_CLUB_KEY, nextId);
 
     setIsLoading(false);
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
     refreshClubs();

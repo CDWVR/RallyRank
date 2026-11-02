@@ -17,6 +17,7 @@ import type { Player } from '@/integrations/supabase/types';
 import { Button } from '@/components/ui/button';
 import { overallWinRate } from '@/lib/ladderStats';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/errors';
 
 const PlayerProfilePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -77,7 +78,7 @@ const PlayerProfilePage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       toast.success('Linked to your account');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const unlinkMutation = useMutation({
@@ -90,7 +91,7 @@ const PlayerProfilePage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       toast.success('Unlinked');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   if (!player) {

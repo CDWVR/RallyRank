@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { downloadCsv, toCsv } from '@/lib/csv';
 import type { Club, Invite, Membership, SessionTemplate } from '@/integrations/supabase/types';
+import { describeError } from '@/lib/errors';
 
 const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
@@ -116,7 +117,7 @@ const SettingsPage: React.FC = () => {
       setRevealOpen(true);
       queryClient.invalidateQueries({ queryKey: ['invites', club?.id] });
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const { data: openInvites = [] } = useQuery({
@@ -144,7 +145,7 @@ const SettingsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['invites', club?.id] });
       toast.success('Invite revoked');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const renameClub = useMutation({
@@ -160,7 +161,7 @@ const SettingsPage: React.FC = () => {
       await refreshClubs();
       toast.success('Club renamed');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const exportData = async (kind: 'roster' | 'matches') => {
@@ -240,7 +241,7 @@ const SettingsPage: React.FC = () => {
       }
       toast.success('Export downloaded');
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Export failed');
+      toast.error(describeError(e, 'Export failed'));
     }
   };
 
@@ -281,7 +282,7 @@ const SettingsPage: React.FC = () => {
       setTemplateCourts('2');
       setTemplateWeekday('none');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const deleteSessionTemplate = useMutation({
@@ -293,7 +294,7 @@ const SettingsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['session_templates', club?.id] });
       toast.success('Template removed');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const startSeason = useMutation({
@@ -319,7 +320,7 @@ const SettingsPage: React.FC = () => {
       toast.success('New season started');
       setSeasonName('');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const rotateShare = useMutation({
@@ -342,7 +343,7 @@ const SettingsPage: React.FC = () => {
       await refreshClubs();
       toast.success('Public ladder link rotated');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const leaveClub = useMutation({
@@ -358,7 +359,7 @@ const SettingsPage: React.FC = () => {
       toast.success('Left club');
       navigate('/onboarding');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const removeMember = useMutation({
@@ -376,7 +377,7 @@ const SettingsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['memberships', club?.id] });
       toast.success('Member removed');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const updateRole = useMutation({
@@ -392,7 +393,7 @@ const SettingsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['memberships', club?.id] });
       toast.success('Role updated');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const transferOwnership = useMutation({
@@ -419,7 +420,7 @@ const SettingsPage: React.FC = () => {
       setTransferTo('');
       toast.success('Ownership transferred');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const shareUrl =

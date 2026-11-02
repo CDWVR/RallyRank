@@ -128,3 +128,45 @@ describe('startup migration failures', () => {
     expect((await res.json()).database.problem).toMatch(/0002_x\.sql failed/);
   });
 });
+
+describe('/api/health PostgREST probe', () => {
+  const okPool = { query: async () => ({ rows: [] }) } as unknown as Pool;
+
+  async function withFakePostgrest(status: number, body: unknown, run: (url: string) => Promise<void>) {
+    const http = await import('node:http');
+    const seen: string[] = [];
+    const srv = http.createServer((req, res) => {
+      seen.push(req.headers.authorization ?? '');
+      res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    const { port } = srv.address() as { port: number };
+    try {
+      await run(`http://127.0.0.1:${port}`);
+      // The probe must send a signed token, like the app does.
+      expect(seen[0]).toMatch(/^Bearer ey/);
+    } finally {
+      srv.close();
+    }
+  }
+
+  async function postgrestProblem(url: string) {
+    const app = createApp({ pool: okPool, jwtSecret: JWT_SECRET, postgrestUrl: url });
+    return (await (await app.request('/api/health')).json()).postgrest;
+  }
+
+  it('names a JWT secret mismatch', () =>
+    withFakePostgrest(401, { code: 'PGRST301', message: 'JWSError JWSInvalidSignature' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_SECRET .* must equal JWT_SECRET/);
+    }));
+
+  it('names a JWT audience mismatch', () =>
+    withFakePostgrest(401, { code: 'PGRST301', message: 'JWTNotInAudience' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_AUD/);
+    }));
+
+  it('passes when PostgREST accepts the token', () =>
+    withFakePostgrest(200, [], async (url) => {
+      expect(await postgrestProblem(url)).toEqual({ ok: true });
+    }));
+});

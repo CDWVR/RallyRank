@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useClub } from '@/context/ClubContext';
+import { describeError } from '@/lib/errors';
 
 const OnboardingPage: React.FC = () => {
   const { clubs, isLoading, createClub, joinClub } = useClub();
@@ -28,7 +29,7 @@ const OnboardingPage: React.FC = () => {
       toast.success('Club created');
       navigate('/app');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Could not create club');
+      toast.error(describeError(err, 'Could not create club'));
     } finally {
       setBusy(false);
     }
@@ -42,7 +43,7 @@ const OnboardingPage: React.FC = () => {
       toast.success('Joined club');
       navigate('/app');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Invalid invite code');
+      toast.error(describeError(err, 'Invalid invite code'));
     } finally {
       setBusy(false);
     }

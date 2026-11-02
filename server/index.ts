@@ -43,7 +43,7 @@ try {
 }
 
 // Say at boot what is still wrong, instead of leaving it to the first sign-in to fail.
-void checkHealth(pool, config.POSTGREST_URL, migrationProblem).then(({ database, postgrest }) => {
+void checkHealth(pool, config.POSTGREST_URL, config.JWT_SECRET, migrationProblem).then(({ database, postgrest }) => {
   if (!database.ok) console.error(`Startup check: ${database.problem}`);
   if (!postgrest.ok) console.error(`Startup check: ${postgrest.problem}`);
 });

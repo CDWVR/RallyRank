@@ -35,6 +35,7 @@ import {
 } from '@/lib/courtBoard';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/errors';
 
 type ClubSession = {
   id: string;
@@ -176,7 +177,7 @@ const SessionPage: React.FC = () => {
       });
       if (error) {
         console.error(error);
-        toast.error(error.message || 'Failed to save session');
+        toast.error(describeError(error, 'Failed to save session'));
       } else queryClient.invalidateQueries({ queryKey: ['club-session', club?.id] });
     },
     [session?.id, selected, courts, courtCount, queryClient, club?.id]
@@ -315,7 +316,7 @@ const SessionPage: React.FC = () => {
       );
       setSummaryOpen(true);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not build summary');
+      toast.error(describeError(e, 'Could not build summary'));
     } finally {
       setSummaryLoading(false);
     }
@@ -345,7 +346,7 @@ const SessionPage: React.FC = () => {
       setGuestName('');
       toast.success(`${guest.name} added as guest`);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const closeMutation = useMutation({
@@ -368,7 +369,7 @@ const SessionPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['players'] });
       toast.success('Session closed');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   if (!isLoading && players.length === 0) {

@@ -7,6 +7,7 @@ import { useClub } from '@/context/ClubContext';
 import { Button } from '@/components/ui/button';
 import type { Player } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/errors';
 
 /**
  * After joining a club, let the member claim an unlinked roster row
@@ -65,7 +66,7 @@ const ClaimPlayerPage: React.FC = () => {
     });
     setBusyId(null);
     if (error) {
-      toast.error(error.message);
+      toast.error(describeError(error));
       return;
     }
     queryClient.invalidateQueries({ queryKey: ['players'] });

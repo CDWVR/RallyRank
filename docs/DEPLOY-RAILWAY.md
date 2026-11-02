@@ -81,6 +81,10 @@ Start with **`https://<your-domain>/api/health`**. It reports whether the databa
   - *Migration … failed at startup*: that file failed against this database. `Startup migrations failed:` in the web logs has the database's error.
   - *rejected the credentials* / *does not exist*: `DATABASE_URL` is stale or hand-typed. Use the reference `${{Postgres.DATABASE_URL}}`.
   - *Cannot reach the database host*: the Postgres service is down, or `DATABASE_URL` points to a host this service can't reach.
+- **Sign-in works but creating a club (or anything else) fails, or `/api/health` shows `postgrest.ok: false`**: the health check makes a real signed request through PostgREST, and `problem` names the cause:
+  - *rejects the app's tokens: PGRST_JWT_SECRET … must equal JWT_SECRET*: set both to `${{shared.JWT_SECRET}}`, then redeploy postgrest.
+  - *rejects the app's tokens: set PGRST_JWT_AUD*: set it to `authenticated` on postgrest (or delete it), then redeploy postgrest.
+  - *Cannot reach PostgREST*: see the `/rest/...` 502 entry below.
 - **The healthcheck or pre-deploy step seems to be ignored**: Railway isn't reading `railway.toml`. In the web service's **Settings**, check that the config-as-code file path is `railway.toml` (or empty, which defaults to it) and that the root directory is the repo root.
 - **`Invalid server configuration: …` in web logs**: the variable named in the message is missing or too short (`JWT_SECRET` needs 32+ characters).
 - **`/rest/...` returns 502, and web logs say `PostgREST at … unreachable`**: check `POSTGREST_URL` and that the postgrest service is running, with `PGRST_SERVER_HOST=*`. If postgrest shows **Crashed**, it most likely gave up before the `authenticator` role existed: redeploy it (see step 3).

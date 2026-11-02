@@ -16,6 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { describeError } from '@/lib/errors';
 
 const RosterPage: React.FC = () => {
   const { club } = useClub();
@@ -70,7 +71,7 @@ const RosterPage: React.FC = () => {
       setAsGuest(false);
       setEditPlayer(null);
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const archiveMutation = useMutation({
@@ -87,7 +88,7 @@ const RosterPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['players', club?.id] });
       toast.success('Player archived');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const promoteMutation = useMutation({
@@ -99,7 +100,7 @@ const RosterPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['players', club?.id] });
       toast.success('Guest promoted to full roster');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const openCreate = () => {
