@@ -42,9 +42,13 @@ export interface HealthReport {
  * DATABASE_URL from going live. PostgREST is reported but not gated, since on a first deploy it only
  * comes up after this service's migrations have created its login role.
  */
-export async function checkHealth(pool: Pool, postgrestUrl: string): Promise<HealthReport> {
+export async function checkHealth(pool: Pool, postgrestUrl: string, migrationProblem?: string | null): Promise<HealthReport> {
   const database: HealthReport['database'] = { ok: true };
-  try {
+  if (migrationProblem) {
+    // A later migration can fail while auth.users already exists; the query below wouldn't notice.
+    database.ok = false;
+    database.problem = migrationProblem;
+  } else try {
     // Touches the table every sign-in reads, so a database that is up but unmigrated also fails.
     // query_timeout bounds a stalled connection (pg honours it per query; @types/pg only declares it on
     // the client config). On timeout pool.query releases the client with the error, which destroys it.

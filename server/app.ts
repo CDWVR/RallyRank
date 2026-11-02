@@ -17,9 +17,11 @@ export interface AppOptions {
   /** Built SPA; omitted in tests. */
   distDir?: string;
   rateLimit?: AuthRoutesOptions['rateLimit'];
+  /** Why startup migrations failed, if they did; makes /api/health fail until it's fixed. */
+  migrationProblem?: () => string | null;
 }
 
-export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }: AppOptions) {
+export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit, migrationProblem }: AppOptions) {
   const app = new Hono();
 
   app.onError((err, c) => {
@@ -35,7 +37,7 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }:
 
   // Railway's healthcheck: fails (503) while the database is unusable, so a broken deploy never takes traffic.
   app.get('/api/health', async (c) => {
-    const report = await checkHealth(pool, postgrestUrl);
+    const report = await checkHealth(pool, postgrestUrl, migrationProblem?.());
     c.header('Cache-Control', 'no-store');
     return c.json(report, report.ok ? 200 : 503);
   });

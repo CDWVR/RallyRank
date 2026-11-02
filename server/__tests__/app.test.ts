@@ -113,3 +113,18 @@ describe('database faults', () => {
     expect((await res.json()).postgrest.ok).toBe(false);
   });
 });
+
+describe('startup migration failures', () => {
+  it('/api/health fails when startup migrations failed, even though auth.users exists', async () => {
+    const okPool = { query: async () => ({ rows: [] }) } as unknown as Pool;
+    const app = createApp({
+      pool: okPool,
+      jwtSecret: JWT_SECRET,
+      postgrestUrl: 'http://127.0.0.1:9',
+      migrationProblem: () => 'Migration 0002_x.sql failed at startup; see the server logs.',
+    });
+    const res = await app.request('/api/health');
+    expect(res.status).toBe(503);
+    expect((await res.json()).database.problem).toMatch(/0002_x\.sql failed/);
+  });
+});
