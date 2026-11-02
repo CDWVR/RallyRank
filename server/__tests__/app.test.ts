@@ -55,4 +55,11 @@ describe('/rest proxy', () => {
     expect(res.status).toBe(502);
     expect((await res.json()).message).toMatch(/unavailable/i);
   });
+
+  it('warns that a failed write may already have been saved', async () => {
+    const app = createApp({ pool, jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+    const res = await app.request('/rest/rpc/log_match', { method: 'POST', body: '{}', headers: { 'content-type': 'application/json' } });
+    expect(res.status).toBe(502);
+    expect((await res.json()).message).toMatch(/may or may not have been saved/i);
+  });
 });

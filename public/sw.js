@@ -33,9 +33,10 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          if (res.ok) {
+          // Only the app's HTML may become the shell: opening e.g. /favicon.svg directly is a navigation too.
+          if (res.ok && (res.headers.get('content-type') || '').includes('text/html')) {
             const copy = res.clone();
-            caches.open(CACHE).then((cache) => cache.put(SHELL, copy));
+            event.waitUntil(caches.open(CACHE).then((cache) => cache.put(SHELL, copy)));
           }
           return res;
         })
@@ -53,7 +54,8 @@ self.addEventListener('fetch', (event) => {
           fetch(request).then((res) => {
             if (res.ok) {
               const copy = res.clone();
-              caches.open(CACHE).then((cache) => cache.put(request, copy));
+              // Keeps the worker alive until the write lands; otherwise the browser may stop it mid-write.
+              event.waitUntil(caches.open(CACHE).then((cache) => cache.put(request, copy)));
             }
             return res;
           })

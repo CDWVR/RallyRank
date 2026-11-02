@@ -50,7 +50,11 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }:
     } catch (err) {
       // PostgREST down, unreachable or too slow: say so instead of a generic 500, so logs point at the right service.
       console.error(`PostgREST at ${upstream} unreachable for ${c.req.method} ${url.pathname}:`, err);
-      return c.json({ message: 'The database service is unavailable. Please try again shortly.' }, 502);
+      // A timeout or reset can land after PostgREST committed, so a retried write could apply twice (e.g. log_match).
+      const message = hasBody
+        ? "The database service didn't respond, so this change may or may not have been saved. Refresh and check before trying again."
+        : 'The database service is unavailable. Please try again shortly.';
+      return c.json({ message }, 502);
     }
 
     const out = new Headers(res.headers);
