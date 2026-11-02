@@ -37,14 +37,21 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }:
     for (const h of STRIPPED_REQUEST_HEADERS) headers.delete(h);
     const hasBody = !['GET', 'HEAD'].includes(c.req.method);
 
-    const res = await fetch(`${upstream}${url.pathname.slice('/rest'.length) || '/'}${url.search}`, {
-      method: c.req.method,
-      headers,
-      body: hasBody ? c.req.raw.body : undefined,
-      // Required by Node's fetch to stream a request body.
-      ...(hasBody ? { duplex: 'half' } : {}),
-      signal: AbortSignal.timeout(30_000),
-    } as RequestInit);
+    let res: Response;
+    try {
+      res = await fetch(`${upstream}${url.pathname.slice('/rest'.length) || '/'}${url.search}`, {
+        method: c.req.method,
+        headers,
+        body: hasBody ? c.req.raw.body : undefined,
+        // Required by Node's fetch to stream a request body.
+        ...(hasBody ? { duplex: 'half' } : {}),
+        signal: AbortSignal.timeout(30_000),
+      } as RequestInit);
+    } catch (err) {
+      // PostgREST down, unreachable or too slow: say so instead of a generic 500, so logs point at the right service.
+      console.error(`PostgREST at ${upstream} unreachable for ${c.req.method} ${url.pathname}:`, err);
+      return c.json({ message: 'The database service is unavailable. Please try again shortly.' }, 502);
+    }
 
     const out = new Headers(res.headers);
     for (const h of STRIPPED_RESPONSE_HEADERS) out.delete(h);
@@ -53,19 +60,20 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }:
 
   if (distDir) {
     const root = path.relative(process.cwd(), distDir) || '.';
-    app.use(
-      '*',
-      serveStatic({
-        root,
-        onFound: (filePath, c) => {
-          // Vite fingerprints everything under assets/; other files (index.html, sw.js) must revalidate.
-          c.header('Cache-Control', /[\\/]assets[\\/]/.test(filePath) ? 'public, max-age=31536000, immutable' : 'no-cache');
-        },
-      })
-    );
-    // SPA fallback: client-side routes like /app/ladder get index.html.
+    // Vite fingerprints everything under assets/; other files (index.html, sw.js) must revalidate.
+    // Set on the finished response: serveStatic has already built it by the time its onFound hook runs.
+    app.use('*', async (c, next) => {
+      await next();
+      if (c.res.status === 200 && c.res.headers.has('last-modified')) {
+        c.res.headers.set('Cache-Control', c.req.path.startsWith('/assets/') ? 'public, max-age=31536000, immutable' : 'no-cache');
+      }
+    });
+    app.use('*', serveStatic({ root }));
+    // SPA fallback: client-side routes like /app/ladder get index.html. A missing file (an old build's
+    // chunk, a mistyped icon path) gets a real 404: as HTML it would be run as a script and blank the page.
     const indexHtml = path.join(distDir, 'index.html');
     app.get('*', (c) => {
+      if (c.req.path.startsWith('/assets/') || /\.[a-z0-9]+$/i.test(c.req.path)) return c.text('Not found', 404);
       c.header('Cache-Control', 'no-cache');
       return c.html(fs.readFileSync(indexHtml, 'utf8'));
     });
