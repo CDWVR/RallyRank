@@ -44,7 +44,7 @@ Variables:
 | `PGRST_SERVER_PORT` | `3001` |
 | `PGRST_SERVER_HOST` | `*` (listen on IPv6 too; Railway's private network uses it) |
 
-It will log connection errors until step 4's first deploy creates the `authenticator` role. That's expected, because it keeps retrying.
+Until step 4's first deploy creates the `authenticator` role, PostgREST can't log in. It treats a failed login as fatal and **exits**; it does not keep retrying. Railway's default restart policy gives up after a few crashes, which usually happens before web's first build finishes. So in the postgrest service's **Settings → Deploy → Restart Policy**, choose **Always**. Then it comes up on its own once the role exists. If you leave the default, **Redeploy** postgrest after step 4's first deploy succeeds.
 
 ## 4. Web (this repo)
 
@@ -70,6 +70,6 @@ On every deploy, `railway.toml` runs `npm run migrate` before the new version st
 ## Troubleshooting
 
 - **`Invalid server configuration: …` in web logs**: the variable named in the message is missing or too short (`JWT_SECRET` needs 32+ characters).
-- **`/rest/...` returns 502/500, or "fetch failed" in web logs**: check `POSTGREST_URL` and that the postgrest service is running, with `PGRST_SERVER_HOST=*`.
+- **`/rest/...` returns 502, and web logs say `PostgREST at … unreachable`**: check `POSTGREST_URL` and that the postgrest service is running, with `PGRST_SERVER_HOST=*`. If postgrest shows **Crashed**, it most likely gave up before the `authenticator` role existed: redeploy it (see step 3).
 - **PostgREST logs `password authentication failed for user "authenticator"`**: `AUTHENTICATOR_PASSWORD` differs between web and postgrest. Use the shared variable in both, then redeploy web, which re-applies the password.
 - **401s on every request after sign-in**: `JWT_SECRET` differs between web and postgrest.

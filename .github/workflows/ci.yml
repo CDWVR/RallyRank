@@ -40,6 +40,8 @@ jobs:
   server-integration:
     runs-on: ubuntu-latest
     # Same stack as docker-compose.yml: migrations, auth API, PostgREST and RLS checked against real Postgres.
+    # PostgREST is started after migrating, not as a service: it exits on its first failed login, and
+    # service containers are never restarted, so it would die before migrate creates the authenticator role.
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/rallyrank
       AUTHENTICATOR_PASSWORD: authenticator-ci-password
@@ -55,17 +57,6 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U postgres -d rallyrank"
           --health-interval 2s --health-retries 30
-      postgrest:
-        image: postgrest/postgrest:v12.2.12
-        env:
-          # Retries until the migrate step below has created this role.
-          PGRST_DB_URI: postgres://authenticator:authenticator-ci-password@db:5432/rallyrank
-          PGRST_DB_SCHEMAS: public
-          PGRST_DB_ANON_ROLE: anon
-          PGRST_JWT_SECRET: ci-only-jwt-secret-0123456789abcdef0123456789
-          PGRST_JWT_AUD: authenticated
-          PGRST_SERVER_PORT: 3001
-        ports: ["3001:3001"]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,10 +73,21 @@ jobs:
       - name: Migrate (twice, to prove it is idempotent)
         run: npm run migrate && npm run migrate
 
+      - name: Start PostgREST
+        run: |
+          docker run -d --name postgrest --network host \
+            -e PGRST_DB_URI="postgres://authenticator:${AUTHENTICATOR_PASSWORD}@localhost:5432/rallyrank" \
+            -e PGRST_DB_SCHEMAS=public \
+            -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_JWT_SECRET="${JWT_SECRET}" \
+            -e PGRST_JWT_AUD=authenticated \
+            -e PGRST_SERVER_PORT=3001 \
+            postgrest/postgrest:v12.2.12
+
       - name: Wait for PostgREST
         run: |
           for i in $(seq 1 30); do curl -sf http://localhost:3001/ > /dev/null && exit 0; sleep 1; done
-          echo "::error::PostgREST did not become ready"; exit 1
+          echo "::error::PostgREST did not become ready"; docker logs postgrest; exit 1
 
       - name: Server integration tests
         run: npx vitest run server
