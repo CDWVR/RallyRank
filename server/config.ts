@@ -5,6 +5,8 @@ const schema = z.object({
   // HS256 secret shared with PostgREST (PGRST_JWT_SECRET); PostgREST rejects shorter ones.
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   POSTGREST_URL: z.url(),
+  // PostgREST's login password; startup migrations apply it to the authenticator role.
+  AUTHENTICATOR_PASSWORD: z.string().min(1).optional(),
   PORT: z.coerce.number().int().positive().default(3000),
 });
 

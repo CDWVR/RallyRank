@@ -59,7 +59,7 @@ The existing service that deploys from GitHub. **Delete the old `VITE_SUPABASE_U
 
 No `VITE_*` variables are needed. The browser only talks to its own origin.
 
-On every deploy, `railway.toml` runs `npm run migrate` before the new version starts. It applies any new files in `db/migrations/`, and a failing migration stops the deploy. Then `npm start` runs `node server/index.ts`. If a required variable is missing, the server refuses to start and lists which one.
+On every deploy, `railway.toml` runs `npm run migrate` before the new version starts, and the server applies any still-pending migrations itself at startup (under a lock, so the two never collide). Migrations therefore land even if Railway skips the pre-deploy step. It applies any new files in `db/migrations/`, and a failing migration stops the deploy. Then `npm start` runs `node server/index.ts`. If a required variable is missing, the server refuses to start and lists which one.
 
 ## 5. Check it
 
@@ -72,7 +72,8 @@ On every deploy, `railway.toml` runs `npm run migrate` before the new version st
 Start with **`https://<your-domain>/api/health`**. It reports whether the database (including migrations) and PostgREST are usable, and names the problem when they aren't. Railway uses it as the healthcheck, so a deploy whose database connection is broken fails rather than going live. The web service also logs `Startup check: …` at boot when something is wrong.
 
 - **Sign-in says "temporarily unavailable" (503), or `/api/health` shows `database.ok: false`**: the `problem` field says which of these it is:
-  - *migrations have not been applied*: the pre-deploy `npm run migrate` didn't run against this database. Check the deploy's pre-deploy logs, and that `DATABASE_URL` is `${{Postgres.DATABASE_URL}}`.
+  - *migrations have not been applied*: neither the pre-deploy step nor the startup migration reached this database. Look for `Startup migrations failed:` in the web logs, and check that `DATABASE_URL` is `${{Postgres.DATABASE_URL}}`.
+- **The healthcheck or pre-deploy step seems to be ignored**: Railway isn't reading `railway.toml`. In the web service's **Settings**, check that the config-as-code file path is `railway.toml` (or empty, which defaults to it) and that the root directory is the repo root.
   - *rejected the credentials* / *does not exist*: `DATABASE_URL` is stale or hand-typed. Use the reference `${{Postgres.DATABASE_URL}}`.
   - *Cannot reach the database host*: the Postgres service is down, or `DATABASE_URL` points to a host this service can't reach.
 - **`Invalid server configuration: …` in web logs**: the variable named in the message is missing or too short (`JWT_SECRET` needs 32+ characters).
