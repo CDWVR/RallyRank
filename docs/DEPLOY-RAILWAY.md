@@ -69,6 +69,12 @@ On every deploy, `railway.toml` runs `npm run migrate` before the new version st
 
 ## Troubleshooting
 
+Start with **`https://<your-domain>/api/health`**. It reports whether the database (including migrations) and PostgREST are usable, and names the problem when they aren't. Railway uses it as the healthcheck, so a deploy whose database connection is broken fails rather than going live. The web service also logs `Startup check: …` at boot when something is wrong.
+
+- **Sign-in says "temporarily unavailable" (503), or `/api/health` shows `database.ok: false`**: the `problem` field says which of these it is:
+  - *migrations have not been applied*: the pre-deploy `npm run migrate` didn't run against this database. Check the deploy's pre-deploy logs, and that `DATABASE_URL` is `${{Postgres.DATABASE_URL}}`.
+  - *rejected the credentials* / *does not exist*: `DATABASE_URL` is stale or hand-typed. Use the reference `${{Postgres.DATABASE_URL}}`.
+  - *Cannot reach the database host*: the Postgres service is down, or `DATABASE_URL` points to a host this service can't reach.
 - **`Invalid server configuration: …` in web logs**: the variable named in the message is missing or too short (`JWT_SECRET` needs 32+ characters).
 - **`/rest/...` returns 502, and web logs say `PostgREST at … unreachable`**: check `POSTGREST_URL` and that the postgrest service is running, with `PGRST_SERVER_HOST=*`. If postgrest shows **Crashed**, it most likely gave up before the `authenticator` role existed: redeploy it (see step 3).
 - **PostgREST logs `password authentication failed for user "authenticator"`**: `AUTHENTICATOR_PASSWORD` differs between web and postgrest. Use the shared variable in both, then redeploy web, which re-applies the password.

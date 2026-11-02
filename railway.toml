@@ -13,5 +13,6 @@ nixpacksConfigPath = "nixpacks.toml"
 # Applies pending db/migrations before the new version takes traffic; a failed migration aborts the deploy.
 preDeployCommand = ["npm run migrate"]
 startCommand = "npm start"
-healthcheckPath = "/"
+# Checks the database (and migrations) too, so a deploy with a broken DATABASE_URL never goes live.
+healthcheckPath = "/api/health"
 restartPolicyType = "ON_FAILURE"

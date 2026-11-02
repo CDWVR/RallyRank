@@ -63,3 +63,53 @@ describe('/rest proxy', () => {
     expect((await res.json()).message).toMatch(/may or may not have been saved/i);
   });
 });
+
+describe('database faults', () => {
+  const failingPool = (code: string) =>
+    ({ query: async () => { throw Object.assign(new Error(`simulated ${code}`), { code }); } }) as unknown as Pool;
+
+  it('sign-in answers 503, not a generic 500, when the database is unusable', async () => {
+    for (const code of ['42P01', 'ECONNREFUSED', '28P01']) {
+      const app = createApp({ pool: failingPool(code), jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+      const res = await app.request('/api/auth/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'a@b.co', password: 'password123' }),
+      });
+      expect(res.status, code).toBe(503);
+      expect((await res.json()).error.message).toMatch(/temporarily unavailable/i);
+    }
+  });
+
+  it('/api/health names the problem and fails, so the deploy healthcheck catches it', async () => {
+    const app = createApp({ pool: failingPool('42P01'), jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+    const res = await app.request('/api/health');
+    expect(res.status).toBe(503);
+    const body = await res.json();
+    expect(body.database.problem).toMatch(/migrations have not been applied/);
+    expect(body.postgrest.ok).toBe(false);
+  });
+
+  it('/api/health bounds the database query and names a stalled database', async () => {
+    let seen: unknown;
+    const stalledPool = {
+      query: async (config: unknown) => {
+        seen = config;
+        throw new Error('Query read timeout');
+      },
+    } as unknown as Pool;
+    const app = createApp({ pool: stalledPool, jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+    const res = await app.request('/api/health');
+    expect(res.status).toBe(503);
+    expect((await res.json()).database.problem).toMatch(/did not answer in time/);
+    expect(seen).toMatchObject({ query_timeout: expect.any(Number) });
+  });
+
+  it('/api/health passes when the database works, even if PostgREST is still down', async () => {
+    const okPool = { query: async () => ({ rows: [] }) } as unknown as Pool;
+    const app = createApp({ pool: okPool, jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+    const res = await app.request('/api/health');
+    expect(res.status).toBe(200);
+    expect((await res.json()).postgrest.ok).toBe(false);
+  });
+});

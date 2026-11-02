@@ -4,6 +4,7 @@ import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import type { Pool } from 'pg';
 import { authRoutes, type AuthRoutesOptions } from './auth.ts';
+import { checkHealth, diagnoseDbError } from './health.ts';
 
 // Hop-by-hop and encoding headers must not be copied across the proxy: fetch() already decoded the body.
 const STRIPPED_RESPONSE_HEADERS = ['content-encoding', 'content-length', 'transfer-encoding', 'connection'];
@@ -22,8 +23,21 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit }:
   const app = new Hono();
 
   app.onError((err, c) => {
+    const problem = diagnoseDbError(err);
+    if (problem) {
+      // A configuration/infrastructure fault, not a bug: name it in the logs and tell the user it's temporary.
+      console.error(`${c.req.method} ${c.req.path} failed: ${problem}`, err);
+      return c.json({ error: { message: 'The service is temporarily unavailable. Please try again in a few minutes.' } }, 503);
+    }
     console.error(`${c.req.method} ${c.req.path} failed:`, err);
     return c.json({ error: { message: 'Internal server error' } }, 500);
+  });
+
+  // Railway's healthcheck: fails (503) while the database is unusable, so a broken deploy never takes traffic.
+  app.get('/api/health', async (c) => {
+    const report = await checkHealth(pool, postgrestUrl);
+    c.header('Cache-Control', 'no-store');
+    return c.json(report, report.ok ? 200 : 503);
   });
 
   app.route('/api/auth', authRoutes({ pool, jwtSecret, rateLimit }));

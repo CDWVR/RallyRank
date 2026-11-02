@@ -5,6 +5,7 @@ import { serve } from '@hono/node-server';
 import pg from 'pg';
 import { createApp } from './app.ts';
 import { loadConfig } from './config.ts';
+import { checkHealth } from './health.ts';
 
 const config = loadConfig();
 const pool = new pg.Pool({ connectionString: config.DATABASE_URL, max: 10, connectionTimeoutMillis: 5_000 });
@@ -15,6 +16,12 @@ const app = createApp({
   jwtSecret: config.JWT_SECRET,
   postgrestUrl: config.POSTGREST_URL,
   distDir: path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'dist'),
+});
+
+// Say at boot what is wrong, instead of leaving it to the first sign-in to fail with a generic error.
+void checkHealth(pool, config.POSTGREST_URL).then(({ database, postgrest }) => {
+  if (!database.ok) console.error(`Startup check: ${database.problem}`);
+  if (!postgrest.ok) console.error(`Startup check: ${postgrest.problem}`);
 });
 
 const server = serve({ fetch: app.fetch, port: config.PORT, hostname: '0.0.0.0' }, (info) => {
