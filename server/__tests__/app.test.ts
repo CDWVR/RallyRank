@@ -90,6 +90,21 @@ describe('database faults', () => {
     expect(body.postgrest.ok).toBe(false);
   });
 
+  it('/api/health bounds the database query and names a stalled database', async () => {
+    let seen: unknown;
+    const stalledPool = {
+      query: async (config: unknown) => {
+        seen = config;
+        throw new Error('Query read timeout');
+      },
+    } as unknown as Pool;
+    const app = createApp({ pool: stalledPool, jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
+    const res = await app.request('/api/health');
+    expect(res.status).toBe(503);
+    expect((await res.json()).database.problem).toMatch(/did not answer in time/);
+    expect(seen).toMatchObject({ query_timeout: expect.any(Number) });
+  });
+
   it('/api/health passes when the database works, even if PostgREST is still down', async () => {
     const okPool = { query: async () => ({ rows: [] }) } as unknown as Pool;
     const app = createApp({ pool: okPool, jwtSecret: JWT_SECRET, postgrestUrl: 'http://127.0.0.1:9' });
