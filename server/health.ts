@@ -96,6 +96,13 @@ async function checkPostgrest(pool: Pool, postgrestUrl: string, jwtSecret: strin
 
   const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
   const message = body.message ?? '';
+  if (body.code === 'PGRST300') {
+    // PostgREST runs and answers anonymous requests, so it looks healthy, but rejects every signed-in one.
+    return { ok: false, problem: 'PGRST_JWT_SECRET is not set on the postgrest service: set it to the same value as JWT_SECRET on this service.' };
+  }
+  if (body.code === 'PGRST000' || body.code === 'PGRST001' || body.code === 'PGRST002') {
+    return { ok: false, problem: 'PostgREST cannot use the database: check PGRST_DB_URI on the postgrest service (user authenticator, password AUTHENTICATOR_PASSWORD).' };
+  }
   if (body.code === 'PGRST301' || res.status === 401) {
     if (/audience/i.test(message)) {
       return { ok: false, problem: 'PostgREST rejects the app\'s tokens: set PGRST_JWT_AUD to "authenticated" (or remove it) on the postgrest service.' };

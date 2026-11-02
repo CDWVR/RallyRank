@@ -15,6 +15,7 @@ export function describeError(err: unknown, fallback = 'Something went wrong. Pl
 
   switch (code) {
     // JWT rejected by PostgREST: a server-side secret/audience mismatch, not something the user can fix.
+    case 'PGRST300':
     case 'PGRST301':
     case 'PGRST302':
     case 'PGRST303':
@@ -26,6 +27,11 @@ export function describeError(err: unknown, fallback = 'Something went wrong. Pl
       return 'The server is still updating. Please try again in a minute.';
     case '42501':
       return "You don't have permission to do that.";
+    // PostgREST can't reach or query its database.
+    case 'PGRST000':
+    case 'PGRST001':
+    case 'PGRST002':
+      return 'The database service is unavailable right now. If this persists, an admin can see the cause at /api/health.';
   }
 
   if (/failed to fetch|networkerror|load failed|fetcherror/i.test(text)) {

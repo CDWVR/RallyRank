@@ -165,6 +165,16 @@ describe('/api/health PostgREST probe', () => {
       expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_AUD/);
     }));
 
+  it('names a missing PGRST_JWT_SECRET', () =>
+    withFakePostgrest(500, { code: 'PGRST300', message: 'Server lacks JWT secret' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_SECRET is not set/);
+    }));
+
+  it('names a PostgREST that cannot reach its database', () =>
+    withFakePostgrest(503, { code: 'PGRST002', message: 'Could not query the database for the schema cache. Retrying.' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_DB_URI/);
+    }));
+
   it('passes when PostgREST accepts the token', () =>
     withFakePostgrest(200, [], async (url) => {
       expect(await postgrestProblem(url)).toEqual({ ok: true });

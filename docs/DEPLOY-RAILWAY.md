@@ -82,6 +82,8 @@ Start with **`https://<your-domain>/api/health`**. It reports whether the databa
   - *rejected the credentials* / *does not exist*: `DATABASE_URL` is stale or hand-typed. Use the reference `${{Postgres.DATABASE_URL}}`.
   - *Cannot reach the database host*: the Postgres service is down, or `DATABASE_URL` points to a host this service can't reach.
 - **Sign-in works but creating a club (or anything else) fails, or `/api/health` shows `postgrest.ok: false`**: the health check makes a real signed request through PostgREST, and `problem` names the cause:
+  - *PGRST_JWT_SECRET is not set*: the postgrest service is missing its variables (step 3). It still shows Online, because it answers anonymous requests.
+  - *cannot use the database: check PGRST_DB_URI*: set it as in step 3.
   - *rejects the app's tokens: PGRST_JWT_SECRET … must equal JWT_SECRET*: set both to `${{shared.JWT_SECRET}}`, then redeploy postgrest.
   - *rejects the app's tokens: set PGRST_JWT_AUD*: set it to `authenticated` on postgrest (or delete it), then redeploy postgrest.
   - *Cannot reach PostgREST*: see the `/rest/...` 502 entry below.

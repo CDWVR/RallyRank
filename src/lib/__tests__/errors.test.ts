@@ -10,6 +10,7 @@ describe('describeError', () => {
 
   it('explains a rejected JWT instead of showing "JWSError JWSInvalidSignature"', () => {
     expect(describeError({ code: 'PGRST301', message: 'JWSError JWSInvalidSignature' })).toMatch(/server configuration problem/);
+    expect(describeError({ code: 'PGRST300', message: 'Server lacks JWT secret' })).toMatch(/server configuration problem/);
   });
 
   it('keeps Error messages, maps network failures, and falls back for empty values', () => {
