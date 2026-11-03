@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import type { Club, ClubRole, Membership, Season } from '@/integrations/supabase/types';
@@ -33,6 +33,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [season, setSeason] = useState<Season | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Refreshes can overlap (initial load, mutations, tab becoming visible). Each one takes a generation
+  // number; only the newest may write state, so an older, slower response can't overwrite newer data.
+  const generation = useRef(0);
+  const inFlight = useRef(0);
+
   const refreshClubs = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!userId) {
       setClubs([]);
@@ -41,53 +46,53 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
       return;
     }
+    // A background re-check is pointless while a load is already running; skipping it also means it can
+    // never end or supersede a foreground load.
+    if (silent && inFlight.current > 0) return;
 
+    const gen = ++generation.current;
+    inFlight.current += 1;
     // A background refresh must not swap the page for a loading screen.
     if (!silent) setIsLoading(true);
-    const { data: memberRows, error: memberError } = await supabase
-      .from('memberships')
-      .select('*')
-      .eq('user_id', userId);
+    try {
+      const { data: memberRows, error: memberError } = await supabase
+        .from('memberships')
+        .select('*')
+        .eq('user_id', userId);
+      if (memberError) {
+        console.error(memberError);
+        return;
+      }
+      const membershipList = (memberRows || []) as Membership[];
 
-    if (memberError) {
-      console.error(memberError);
-      setIsLoading(false);
-      return;
+      let clubList: Club[] = [];
+      const clubIds = membershipList.map((m) => m.club_id);
+      if (clubIds.length > 0) {
+        const { data: clubRows, error: clubError } = await supabase.from('clubs').select('*').in('id', clubIds);
+        if (clubError) {
+          console.error(clubError);
+          return;
+        }
+        clubList = (clubRows || []) as Club[];
+      }
+
+      if (gen !== generation.current) return;
+      setMemberships(membershipList);
+      setClubs(clubList);
+      if (clubList.length === 0) return;
+
+      const stored = localStorage.getItem(ACTIVE_CLUB_KEY);
+      const nextId =
+        (stored && clubList.some((c) => c.id === stored) && stored) ||
+        clubList[0]?.id ||
+        null;
+      setActiveClubIdState(nextId);
+      if (nextId) localStorage.setItem(ACTIVE_CLUB_KEY, nextId);
+    } finally {
+      inFlight.current -= 1;
+      // Only the latest foreground load ends the loading state.
+      if (!silent && gen === generation.current) setIsLoading(false);
     }
-
-    const membershipList = (memberRows || []) as Membership[];
-    setMemberships(membershipList);
-
-    const clubIds = membershipList.map((m) => m.club_id);
-    if (clubIds.length === 0) {
-      setClubs([]);
-      setIsLoading(false);
-      return;
-    }
-
-    const { data: clubRows, error: clubError } = await supabase
-      .from('clubs')
-      .select('*')
-      .in('id', clubIds);
-
-    if (clubError) {
-      console.error(clubError);
-      setIsLoading(false);
-      return;
-    }
-
-    const clubList = (clubRows || []) as Club[];
-    setClubs(clubList);
-
-    const stored = localStorage.getItem(ACTIVE_CLUB_KEY);
-    const nextId =
-      (stored && clubList.some((c) => c.id === stored) && stored) ||
-      clubList[0]?.id ||
-      null;
-    setActiveClubIdState(nextId);
-    if (nextId) localStorage.setItem(ACTIVE_CLUB_KEY, nextId);
-
-    setIsLoading(false);
   }, [userId]);
 
   useEffect(() => {

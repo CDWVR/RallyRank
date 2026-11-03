@@ -1,6 +1,6 @@
 import { PostgrestClient } from '@supabase/postgrest-js';
 import type { Database } from '../types';
-import { createRemoteAuth, type RemoteAuth } from './auth';
+import { createRemoteAuth, type RefreshOutcome, type RemoteAuth } from './auth';
 
 function withBearer(init: RequestInit | undefined, token: string | null): RequestInit {
   const headers = new Headers(init?.headers);
@@ -17,12 +17,12 @@ export const REFRESH_ON_401_COOLDOWN_MS = 30_000;
 
 /** fetch for PostgREST: attaches the access token and, if the server says it expired, refreshes once and retries. */
 export function createAuthedFetch(
-  remote: Pick<RemoteAuth, 'getAccessToken' | 'refresh'>,
+  remote: Pick<RemoteAuth, 'getAccessToken' | 'refreshWithOutcome'>,
   now: () => number = Date.now
 ): typeof fetch {
   let cooldownUntil = -Infinity;
   // Requests that hit 401 together share one refresh instead of failing or refreshing again.
-  let inflight: Promise<string | null> | null = null;
+  let inflight: Promise<RefreshOutcome> | null = null;
 
   return async (input, init) => {
     const token = await remote.getAccessToken();
@@ -30,20 +30,24 @@ export function createAuthedFetch(
     if (res.status !== 401 || !token) return res;
 
     // Another request may already have refreshed (or be refreshing): reuse its token.
-    const current = inflight ? await inflight : await remote.getAccessToken();
+    const current = inflight ? ((await inflight).session?.access_token ?? null) : await remote.getAccessToken();
     if (current && current !== token) return fetch(input, withBearer(init, current));
     if (now() < cooldownUntil) return res;
 
-    inflight ??= remote
-      .refresh()
-      .then((s) => s?.access_token ?? null)
-      .finally(() => {
-        inflight = null;
-      });
-    const fresh = await inflight;
-    // No new token: signed out, or a network error kept the old session. Not proof of misconfiguration,
-    // so no cooldown; the next request may well succeed once the network is back.
-    if (!fresh || fresh === token) return res;
+    inflight ??= remote.refreshWithOutcome().finally(() => {
+      inflight = null;
+    });
+    const outcome = await inflight;
+    // Signed out, or a network error kept the old session: not proof of misconfiguration, so no
+    // cooldown; the next request may well succeed once the network is back.
+    if (!outcome.refreshed) return res;
+    const fresh = outcome.session?.access_token;
+    // The server issued a session but the token is the one just rejected (re-issued within the same
+    // second): retrying can't help, and further refreshes would each hit the database.
+    if (!fresh || fresh === token) {
+      cooldownUntil = now() + REFRESH_ON_401_COOLDOWN_MS;
+      return res;
+    }
 
     const retry = await fetch(input, withBearer(init, fresh));
     if (retry.status === 401) cooldownUntil = now() + REFRESH_ON_401_COOLDOWN_MS;
