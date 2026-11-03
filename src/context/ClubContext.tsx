@@ -37,6 +37,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // number; only the newest may write state, so an older, slower response can't overwrite newer data.
   const generation = useRef(0);
   const inFlight = useRef(0);
+  // A visibility check that arrived mid-load; run once when the load finishes (repeats coalesce).
+  const recheckQueued = useRef(false);
 
   const refreshClubs = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!userId) {
@@ -46,9 +48,12 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
       return;
     }
-    // A background re-check is pointless while a load is already running; skipping it also means it can
-    // never end or supersede a foreground load.
-    if (silent && inFlight.current > 0) return;
+    // A background re-check never overlaps a running load, so it can't end or supersede it. The running
+    // load may have read memberships before the change that prompted this check, so queue one re-check.
+    if (silent && inFlight.current > 0) {
+      recheckQueued.current = true;
+      return;
+    }
 
     const gen = ++generation.current;
     inFlight.current += 1;
@@ -92,6 +97,10 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       inFlight.current -= 1;
       // Only the latest foreground load ends the loading state.
       if (!silent && gen === generation.current) setIsLoading(false);
+      if (inFlight.current === 0 && recheckQueued.current) {
+        recheckQueued.current = false;
+        void refreshClubs({ silent: true });
+      }
     }
   }, [userId]);
 
