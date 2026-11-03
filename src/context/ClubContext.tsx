@@ -39,6 +39,11 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const inFlight = useRef(0);
   // A visibility check that arrived mid-load; run once when the load finishes (repeats coalesce).
   const recheckQueued = useRef(false);
+  // The signed-in user right now. A refresh started for someone else (sign-in in another tab while it
+  // ran) must not write its result.
+  const currentUserId = useRef(userId);
+  currentUserId.current = userId;
+  const latestRefresh = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => {});
 
   const refreshClubs = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!userId) {
@@ -81,7 +86,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clubList = (clubRows || []) as Club[];
       }
 
-      if (gen !== generation.current) return;
+      if (gen !== generation.current || userId !== currentUserId.current) return;
       setMemberships(membershipList);
       setClubs(clubList);
       if (clubList.length === 0) return;
@@ -99,12 +104,14 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!silent && gen === generation.current) setIsLoading(false);
       if (inFlight.current === 0 && recheckQueued.current) {
         recheckQueued.current = false;
-        void refreshClubs({ silent: true });
+        // The latest callback, so the recheck runs for whoever is signed in now, not this closure's user.
+        void latestRefresh.current({ silent: true });
       }
     }
   }, [userId]);
 
   useEffect(() => {
+    latestRefresh.current = refreshClubs;
     refreshClubs();
   }, [refreshClubs]);
 
