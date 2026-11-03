@@ -53,6 +53,10 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(false);
       return;
     }
+    // A callback captured for a previous user (e.g. createClub resolving after another user signed in)
+    // must not advance the shared generation and thereby discard the current user's load.
+    if (userId !== currentUserId.current) return;
+
     // A background re-check never overlaps a running load, so it can't end or supersede it. The running
     // load may have read memberships before the change that prompted this check, so queue one re-check.
     if (silent && inFlight.current > 0) {
