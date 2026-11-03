@@ -11,7 +11,7 @@ type ClubContextType = {
   season: Season | null;
   isLoading: boolean;
   setActiveClubId: (id: string) => void;
-  refreshClubs: () => Promise<void>;
+  refreshClubs: (options?: { silent?: boolean }) => Promise<void>;
   refreshSeason: () => Promise<void>;
   createClub: (name: string) => Promise<Club>;
   joinClub: (code: string) => Promise<Club>;
@@ -33,7 +33,7 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [season, setSeason] = useState<Season | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const refreshClubs = useCallback(async () => {
+  const refreshClubs = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
     if (!userId) {
       setClubs([]);
       setMemberships([]);
@@ -42,7 +42,8 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    setIsLoading(true);
+    // A background refresh must not swap the page for a loading screen.
+    if (!silent) setIsLoading(true);
     const { data: memberRows, error: memberError } = await supabase
       .from('memberships')
       .select('*')
@@ -91,6 +92,16 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     refreshClubs();
+  }, [refreshClubs]);
+
+  // Memberships can change elsewhere (removed from a club, role changed on another device). Re-check when
+  // the tab becomes visible again, quietly; session refreshes deliberately no longer trigger a reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshClubs({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshClubs]);
 
   const refreshSeason = useCallback(async () => {

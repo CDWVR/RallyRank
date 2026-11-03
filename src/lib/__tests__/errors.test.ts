@@ -13,6 +13,12 @@ describe('describeError', () => {
     expect(describeError({ code: 'PGRST300', message: 'Server lacks JWT secret' })).toMatch(/server configuration problem/);
   });
 
+  it('treats an expired token as an expired session, and a missing function as not temporary', () => {
+    expect(describeError({ code: 'PGRST301', message: 'JWT expired' })).toMatch(/session has expired/);
+    expect(describeError({ code: 'PGRST202', message: 'Could not find the function' })).toMatch(/contact the admin/);
+    expect(describeError({ code: 'PGRST205', message: 'Could not find the table' })).toMatch(/still updating/);
+  });
+
   it('keeps Error messages, maps network failures, and falls back for empty values', () => {
     expect(describeError(new Error('boom'))).toBe('boom');
     expect(describeError(new TypeError('Failed to fetch'))).toMatch(/Can't reach the server/);

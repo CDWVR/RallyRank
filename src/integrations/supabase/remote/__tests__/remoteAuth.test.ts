@@ -142,4 +142,43 @@ describe('authed fetch for PostgREST', () => {
     await authed('/rest/clubs');
     expect(refresh).toHaveBeenCalledTimes(2);
   });
+
+  it('lets concurrent 401s share one refresh and retry with its token', async () => {
+    let token = 'old';
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) =>
+      new Headers(init.headers).get('Authorization') === 'Bearer new' ? json(200, []) : unauthorized()
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    let release!: () => void;
+    const refresh = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            token = 'new';
+            resolve(session('new'));
+          };
+        })
+    );
+    const authed = createAuthedFetch({ getAccessToken: async () => token, refresh });
+
+    const a = authed('/rest/clubs');
+    const b = authed('/rest/memberships');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    release();
+    expect((await a).status).toBe(200);
+    expect((await b).status).toBe(200);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start the cooldown when the refresh itself failed (e.g. offline)', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
+    vi.stubGlobal('fetch', fetchMock);
+    // On a network error the auth client keeps (returns) the current session.
+    const refresh = vi.fn().mockResolvedValue(session('tok'));
+    const authed = createAuthedFetch({ getAccessToken: async () => 'tok', refresh }, () => 0);
+
+    await authed('/rest/clubs');
+    await authed('/rest/clubs');
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
 });

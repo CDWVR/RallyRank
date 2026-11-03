@@ -13,6 +13,9 @@ export function describeError(err: unknown, fallback = 'Something went wrong. Pl
   const { code, message } = err as { code?: unknown; message?: unknown };
   const text = typeof message === 'string' ? message.trim() : '';
 
+  // PostgREST also uses PGRST301 for an expired token: the user's session, not the server's config.
+  if (code === 'PGRST301' && /expired/i.test(text)) return 'Your session has expired. Please sign in again.';
+
   switch (code) {
     // JWT rejected by PostgREST: a server-side secret/audience mismatch, not something the user can fix.
     case 'PGRST300':
@@ -21,10 +24,12 @@ export function describeError(err: unknown, fallback = 'Something went wrong. Pl
     case 'PGRST303':
       return 'The database service rejected your session. This is a server configuration problem: an admin can see the cause at /api/health.';
     // Schema cache missing a table/function: usually right after a deploy, before PostgREST reloads.
-    case 'PGRST202':
     case 'PGRST205':
-    case '42883':
       return 'The server is still updating. Please try again in a minute.';
+    // A function the app calls doesn't exist on the server: waiting won't fix it.
+    case 'PGRST202':
+    case '42883':
+      return 'This feature is unavailable on the server right now. If it keeps happening, contact the admin.';
     case '42501':
       return "You don't have permission to do that.";
     // PostgREST can't reach or query its database.

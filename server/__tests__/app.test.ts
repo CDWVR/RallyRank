@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Pool } from 'pg';
+import { jwtVerify } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 
@@ -143,8 +144,13 @@ describe('/api/health PostgREST probe', () => {
     const { port } = srv.address() as { port: number };
     try {
       await run(`http://127.0.0.1:${port}`);
-      // The probe must send a signed token, like the app does.
+      // The probe must send a token PostgREST would accept: signed with JWT_SECRET, right audience and role.
       expect(seen[0]).toMatch(/^Bearer ey/);
+      const { payload } = await jwtVerify(seen[0].slice('Bearer '.length), new TextEncoder().encode(JWT_SECRET), {
+        algorithms: ['HS256'],
+        audience: 'authenticated',
+      });
+      expect(payload.role).toBe('authenticated');
     } finally {
       srv.close();
     }

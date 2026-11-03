@@ -23,7 +23,13 @@ export const useAuth = () => useContext(AuthContext);
  * effect that depends on `user` from re-running (and re-fetching) on each hourly refresh.
  */
 function sameUser(prev: User | null, next: User | null): User | null {
-  return prev && next && prev.id === next.id && prev.email === next.email ? prev : next;
+  if (!prev || !next) return next;
+  const unchanged =
+    prev.id === next.id &&
+    prev.email === next.email &&
+    prev.created_at === next.created_at &&
+    JSON.stringify(prev.user_metadata ?? {}) === JSON.stringify(next.user_metadata ?? {});
+  return unchanged ? prev : next;
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
