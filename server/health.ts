@@ -1,4 +1,5 @@
 import type { Pool, QueryConfig } from 'pg';
+import { signAccessToken } from './tokens.ts';
 
 /**
  * Turns a database failure into a short, secret-free diagnosis. Each of these otherwise surfaces only as
@@ -42,7 +43,12 @@ export interface HealthReport {
  * DATABASE_URL from going live. PostgREST is reported but not gated, since on a first deploy it only
  * comes up after this service's migrations have created its login role.
  */
-export async function checkHealth(pool: Pool, postgrestUrl: string, migrationProblem?: string | null): Promise<HealthReport> {
+export async function checkHealth(
+  pool: Pool,
+  postgrestUrl: string,
+  jwtSecret: string,
+  migrationProblem?: string | null,
+): Promise<HealthReport> {
   const database: HealthReport['database'] = { ok: true };
   if (migrationProblem) {
     // A later migration can fail while auth.users already exists; the query below wouldn't notice.
@@ -60,19 +66,57 @@ export async function checkHealth(pool: Pool, postgrestUrl: string, migrationPro
     database.problem = problem ?? 'Database query failed; see the server logs.';
   }
 
-  const postgrest: HealthReport['postgrest'] = { ok: true };
+  const postgrest = await checkPostgrest(pool, postgrestUrl, jwtSecret);
+  return { ok: database.ok, database, postgrest };
+}
+
+// Not a real user: RLS gives it no rows, which is all the probe needs.
+const PROBE_USER = '00000000-0000-0000-0000-000000000000';
+
+/**
+ * Makes the same kind of request the app does: a token signed like a real session, sent to PostgREST
+ * for a table behind RLS. "PostgREST is up" isn't enough; a JWT secret or audience that differs between
+ * this service and PostgREST makes every app request fail while PostgREST itself looks healthy.
+ */
+async function checkPostgrest(pool: Pool, postgrestUrl: string, jwtSecret: string): Promise<HealthReport['postgrest']> {
+  let res: Response;
   try {
-    const res = await fetch(postgrestUrl, { signal: AbortSignal.timeout(3_000) });
-    // Only the status matters; release the body so the connection is freed now, not at garbage collection.
-    await res.body?.cancel();
-    if (!res.ok) {
-      postgrest.ok = false;
-      postgrest.problem = `PostgREST answered ${res.status}.`;
-    }
+    const { token } = await signAccessToken({ sub: PROBE_USER, email: 'health-check@rallyrank.invalid' }, jwtSecret);
+    res = await fetch(`${postgrestUrl.replace(/\/$/, '')}/clubs?select=id&limit=1`, {
+      headers: { authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(3_000),
+    });
   } catch {
-    postgrest.ok = false;
-    postgrest.problem = 'Cannot reach PostgREST at POSTGREST_URL.';
+    return { ok: false, problem: 'Cannot reach PostgREST at POSTGREST_URL.' };
+  }
+  if (res.ok) {
+    await res.body?.cancel();
+    return { ok: true };
   }
 
-  return { ok: database.ok, database, postgrest };
+  const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+  const message = body.message ?? '';
+  if (body.code === 'PGRST300') {
+    // PostgREST runs and answers anonymous requests, so it looks healthy, but rejects every signed-in one.
+    return { ok: false, problem: 'PGRST_JWT_SECRET is not set on the postgrest service: set it to the same value as JWT_SECRET on this service.' };
+  }
+  if (body.code === 'PGRST000' || body.code === 'PGRST001' || body.code === 'PGRST002') {
+    return { ok: false, problem: 'PostgREST cannot use the database: check PGRST_DB_URI on the postgrest service (user authenticator, password AUTHENTICATOR_PASSWORD).' };
+  }
+  if (body.code === 'PGRST301' || res.status === 401) {
+    if (/audience/i.test(message)) {
+      return { ok: false, problem: 'PostgREST rejects the app\'s tokens: set PGRST_JWT_AUD to "authenticated" (or remove it) on the postgrest service.' };
+    }
+    return { ok: false, problem: 'PostgREST rejects the app\'s tokens: PGRST_JWT_SECRET on the postgrest service must equal JWT_SECRET on this service.' };
+  }
+  if (body.code === 'PGRST205' || body.code === 'PGRST202' || body.code === '42P01') {
+    // PostgREST cached the schema before migrations ran (e.g. it started first). Ask it to reload;
+    // the next check passes if that was all.
+    await pool.query("notify pgrst, 'reload schema'").catch(() => {});
+    return { ok: false, problem: 'PostgREST\'s schema cache was out of date; a reload was requested. Check again in a few seconds.' };
+  }
+  if (body.code === '42501') {
+    return { ok: false, problem: 'PostgREST\'s roles lack privileges on the app tables: migrations may not have completed.' };
+  }
+  return { ok: false, problem: `PostgREST answered ${res.status}${body.code ? ` (${body.code})` : ''}.` };
 }

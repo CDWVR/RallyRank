@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Pool } from 'pg';
+import { jwtVerify } from 'jose';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../app.ts';
 
@@ -127,4 +128,61 @@ describe('startup migration failures', () => {
     expect(res.status).toBe(503);
     expect((await res.json()).database.problem).toMatch(/0002_x\.sql failed/);
   });
+});
+
+describe('/api/health PostgREST probe', () => {
+  const okPool = { query: async () => ({ rows: [] }) } as unknown as Pool;
+
+  async function withFakePostgrest(status: number, body: unknown, run: (url: string) => Promise<void>) {
+    const http = await import('node:http');
+    const seen: string[] = [];
+    const srv = http.createServer((req, res) => {
+      seen.push(req.headers.authorization ?? '');
+      res.writeHead(status, { 'content-type': 'application/json' }).end(JSON.stringify(body));
+    });
+    await new Promise<void>((r) => srv.listen(0, '127.0.0.1', r));
+    const { port } = srv.address() as { port: number };
+    try {
+      await run(`http://127.0.0.1:${port}`);
+      // The probe must send a token PostgREST would accept: signed with JWT_SECRET, right audience and role.
+      expect(seen[0]).toMatch(/^Bearer ey/);
+      const { payload } = await jwtVerify(seen[0].slice('Bearer '.length), new TextEncoder().encode(JWT_SECRET), {
+        algorithms: ['HS256'],
+        audience: 'authenticated',
+      });
+      expect(payload.role).toBe('authenticated');
+    } finally {
+      srv.close();
+    }
+  }
+
+  async function postgrestProblem(url: string) {
+    const app = createApp({ pool: okPool, jwtSecret: JWT_SECRET, postgrestUrl: url });
+    return (await (await app.request('/api/health')).json()).postgrest;
+  }
+
+  it('names a JWT secret mismatch', () =>
+    withFakePostgrest(401, { code: 'PGRST301', message: 'JWSError JWSInvalidSignature' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_SECRET .* must equal JWT_SECRET/);
+    }));
+
+  it('names a JWT audience mismatch', () =>
+    withFakePostgrest(401, { code: 'PGRST301', message: 'JWTNotInAudience' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_AUD/);
+    }));
+
+  it('names a missing PGRST_JWT_SECRET', () =>
+    withFakePostgrest(500, { code: 'PGRST300', message: 'Server lacks JWT secret' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_JWT_SECRET is not set/);
+    }));
+
+  it('names a PostgREST that cannot reach its database', () =>
+    withFakePostgrest(503, { code: 'PGRST002', message: 'Could not query the database for the schema cache. Retrying.' }, async (url) => {
+      expect((await postgrestProblem(url)).problem).toMatch(/PGRST_DB_URI/);
+    }));
+
+  it('passes when PostgREST accepts the token', () =>
+    withFakePostgrest(200, [], async (url) => {
+      expect(await postgrestProblem(url)).toEqual({ ok: true });
+    }));
 });

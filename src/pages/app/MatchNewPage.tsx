@@ -19,6 +19,7 @@ import { toast } from 'sonner';
 import { Minus, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SESSION_TEAMS_KEY } from '@/lib/sessionPrefill';
+import { describeError } from '@/lib/errors';
 
 
 const MAX_SCORE = 30;
@@ -245,7 +246,7 @@ const MatchNewPage: React.FC = () => {
       }
     },
     onError: (e: Error) => {
-      toast.error(e.message);
+      toast.error(describeError(e));
     },
   });
 

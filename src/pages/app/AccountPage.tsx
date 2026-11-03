@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/errors';
 
 const AccountPage: React.FC = () => {
   const { user } = useAuth();
@@ -49,7 +50,7 @@ const AccountPage: React.FC = () => {
       updated_at: new Date().toISOString(),
     });
     setSaving(false);
-    if (error) toast.error(error.message);
+    if (error) toast.error(describeError(error));
     else toast.success('Profile saved');
   };
 

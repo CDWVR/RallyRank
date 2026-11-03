@@ -5,6 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useClub } from '@/context/ClubContext';
 import { Button } from '@/components/ui/button';
 import { savePostAuthRedirect } from '@/lib/authHelpers';
+import { describeError } from '@/lib/errors';
 
 const JoinClubPage: React.FC = () => {
   const { code } = useParams<{ code: string }>();
@@ -31,7 +32,7 @@ const JoinClubPage: React.FC = () => {
       toast.success('Welcome to the club');
       navigate('/app/claim');
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Could not join');
+      toast.error(describeError(err, 'Could not join'));
     } finally {
       setBusy(false);
     }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createRemoteAuth } from '../auth';
-import { createAuthedFetch } from '../client';
+import { createAuthedFetch, REFRESH_ON_401_COOLDOWN_MS } from '../client';
 
 const user = { id: 'u1', email: 'a@example.test', user_metadata: {}, created_at: '2026-01-01T00:00:00Z' };
 
@@ -103,8 +103,8 @@ describe('authed fetch for PostgREST', () => {
   it('sends the bearer token, and on 401 refreshes once and retries with the new token', async () => {
     const fetchMock = vi.fn().mockResolvedValueOnce(unauthorized()).mockResolvedValueOnce(json(200, []));
     vi.stubGlobal('fetch', fetchMock);
-    const refresh = vi.fn().mockResolvedValue(session('fresh'));
-    const authed = createAuthedFetch({ getAccessToken: async () => 'stale', refresh });
+    const refresh = vi.fn().mockResolvedValue({ session: session('fresh'), refreshed: true });
+    const authed = createAuthedFetch({ getAccessToken: async () => 'stale', refreshWithOutcome: refresh });
 
     const res = await authed('/rest/clubs', { headers: { Accept: 'application/json' } });
     expect(res.status).toBe(200);
@@ -117,13 +117,79 @@ describe('authed fetch for PostgREST', () => {
     const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
     vi.stubGlobal('fetch', fetchMock);
 
-    const anon = createAuthedFetch({ getAccessToken: async () => null, refresh: vi.fn() });
+    const anon = createAuthedFetch({ getAccessToken: async () => null, refreshWithOutcome: vi.fn() });
     expect((await anon('/rest/clubs')).status).toBe(401);
     expect(new Headers(fetchMock.mock.calls[0][1].headers).has('Authorization')).toBe(false);
 
-    const refresh = vi.fn().mockResolvedValue(null);
-    const signedIn = createAuthedFetch({ getAccessToken: async () => 'stale', refresh });
+    const refresh = vi.fn().mockResolvedValue({ session: null, refreshed: false });
+    const signedIn = createAuthedFetch({ getAccessToken: async () => 'stale', refreshWithOutcome: refresh });
     expect((await signedIn('/rest/clubs')).status).toBe(401);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('refreshes on 401 at most once per cooldown, so a server rejecting fresh tokens cannot cause a loop', async () => {
+    // PostgREST with a mismatched JWT secret: every request is 401, even with a just-issued token.
+    const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
+    vi.stubGlobal('fetch', fetchMock);
+    let clock = 1_000_000;
+    const refresh = vi.fn().mockResolvedValue({ session: session('fresh'), refreshed: true });
+    const authed = createAuthedFetch({ getAccessToken: async () => 'tok', refreshWithOutcome: refresh }, () => clock);
+
+    for (let i = 0; i < 20; i++) expect((await authed('/rest/clubs')).status).toBe(401);
+    expect(refresh).toHaveBeenCalledTimes(1);
+
+    clock += REFRESH_ON_401_COOLDOWN_MS;
+    await authed('/rest/clubs');
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('lets concurrent 401s share one refresh and retry with its token', async () => {
+    let token = 'old';
+    const fetchMock = vi.fn().mockImplementation(async (_url, init) =>
+      new Headers(init.headers).get('Authorization') === 'Bearer new' ? json(200, []) : unauthorized()
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    let release!: () => void;
+    const refresh = vi.fn().mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => {
+            token = 'new';
+            resolve({ session: session('new'), refreshed: true });
+          };
+        })
+    );
+    const authed = createAuthedFetch({ getAccessToken: async () => token, refreshWithOutcome: refresh });
+
+    const a = authed('/rest/clubs');
+    const b = authed('/rest/memberships');
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    release();
+    expect((await a).status).toBe(200);
+    expect((await b).status).toBe(200);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start the cooldown when the refresh itself failed (e.g. offline)', async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
+    vi.stubGlobal('fetch', fetchMock);
+    // On a network error the auth client keeps the current session and reports refreshed: false.
+    const refresh = vi.fn().mockResolvedValue({ session: session('tok'), refreshed: false });
+    const authed = createAuthedFetch({ getAccessToken: async () => 'tok', refreshWithOutcome: refresh }, () => 0);
+
+    await authed('/rest/clubs');
+    await authed('/rest/clubs');
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts the cooldown when a successful refresh re-issues the very token that was rejected', async () => {
+    // Tokens signed in the same second with the same claims are byte-identical.
+    const fetchMock = vi.fn().mockImplementation(async () => unauthorized());
+    vi.stubGlobal('fetch', fetchMock);
+    const refresh = vi.fn().mockResolvedValue({ session: session('tok'), refreshed: true });
+    const authed = createAuthedFetch({ getAccessToken: async () => 'tok', refreshWithOutcome: refresh }, () => 0);
+
+    for (let i = 0; i < 5; i++) await authed('/rest/clubs');
+    expect(refresh).toHaveBeenCalledTimes(1);
   });
 });

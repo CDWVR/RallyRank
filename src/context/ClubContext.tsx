@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/context/AuthContext';
 import type { Club, ClubRole, Membership, Season } from '@/integrations/supabase/types';
@@ -11,7 +11,7 @@ type ClubContextType = {
   season: Season | null;
   isLoading: boolean;
   setActiveClubId: (id: string) => void;
-  refreshClubs: () => Promise<void>;
+  refreshClubs: (options?: { silent?: boolean }) => Promise<void>;
   refreshSeason: () => Promise<void>;
   createClub: (name: string) => Promise<Club>;
   joinClub: (code: string) => Promise<Club>;
@@ -23,6 +23,8 @@ const ACTIVE_CLUB_KEY = 'rallyrank.activeClubId';
 
 export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  // Keyed on the id, not the object: a session refresh must not reload every club query.
+  const userId = user?.id ?? null;
   const [clubs, setClubs] = useState<Club[]>([]);
   const [memberships, setMemberships] = useState<Membership[]>([]);
   const [activeClubId, setActiveClubIdState] = useState<string | null>(
@@ -31,64 +33,100 @@ export const ClubProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [season, setSeason] = useState<Season | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const refreshClubs = useCallback(async () => {
-    if (!user) {
+  // Refreshes can overlap (initial load, mutations, tab becoming visible). Each one takes a generation
+  // number; only the newest may write state, so an older, slower response can't overwrite newer data.
+  const generation = useRef(0);
+  const inFlight = useRef(0);
+  // A visibility check that arrived mid-load; run once when the load finishes (repeats coalesce).
+  const recheckQueued = useRef(false);
+  // The signed-in user right now. A refresh started for someone else (sign-in in another tab while it
+  // ran) must not write its result.
+  const currentUserId = useRef(userId);
+  currentUserId.current = userId;
+  const latestRefresh = useRef<(options?: { silent?: boolean }) => Promise<void>>(async () => {});
+
+  const refreshClubs = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!userId) {
       setClubs([]);
       setMemberships([]);
       setSeason(null);
       setIsLoading(false);
       return;
     }
+    // A callback captured for a previous user (e.g. createClub resolving after another user signed in)
+    // must not advance the shared generation and thereby discard the current user's load.
+    if (userId !== currentUserId.current) return;
 
-    setIsLoading(true);
-    const { data: memberRows, error: memberError } = await supabase
-      .from('memberships')
-      .select('*')
-      .eq('user_id', user.id);
-
-    if (memberError) {
-      console.error(memberError);
-      setIsLoading(false);
+    // A background re-check never overlaps a running load, so it can't end or supersede it. The running
+    // load may have read memberships before the change that prompted this check, so queue one re-check.
+    if (silent && inFlight.current > 0) {
+      recheckQueued.current = true;
       return;
     }
 
-    const membershipList = (memberRows || []) as Membership[];
-    setMemberships(membershipList);
+    const gen = ++generation.current;
+    inFlight.current += 1;
+    // A background refresh must not swap the page for a loading screen.
+    if (!silent) setIsLoading(true);
+    try {
+      const { data: memberRows, error: memberError } = await supabase
+        .from('memberships')
+        .select('*')
+        .eq('user_id', userId);
+      if (memberError) {
+        console.error(memberError);
+        return;
+      }
+      const membershipList = (memberRows || []) as Membership[];
 
-    const clubIds = membershipList.map((m) => m.club_id);
-    if (clubIds.length === 0) {
-      setClubs([]);
-      setIsLoading(false);
-      return;
+      let clubList: Club[] = [];
+      const clubIds = membershipList.map((m) => m.club_id);
+      if (clubIds.length > 0) {
+        const { data: clubRows, error: clubError } = await supabase.from('clubs').select('*').in('id', clubIds);
+        if (clubError) {
+          console.error(clubError);
+          return;
+        }
+        clubList = (clubRows || []) as Club[];
+      }
+
+      if (gen !== generation.current || userId !== currentUserId.current) return;
+      setMemberships(membershipList);
+      setClubs(clubList);
+      if (clubList.length === 0) return;
+
+      const stored = localStorage.getItem(ACTIVE_CLUB_KEY);
+      const nextId =
+        (stored && clubList.some((c) => c.id === stored) && stored) ||
+        clubList[0]?.id ||
+        null;
+      setActiveClubIdState(nextId);
+      if (nextId) localStorage.setItem(ACTIVE_CLUB_KEY, nextId);
+    } finally {
+      inFlight.current -= 1;
+      // Only the latest foreground load ends the loading state.
+      if (!silent && gen === generation.current) setIsLoading(false);
+      if (inFlight.current === 0 && recheckQueued.current) {
+        recheckQueued.current = false;
+        // The latest callback, so the recheck runs for whoever is signed in now, not this closure's user.
+        void latestRefresh.current({ silent: true });
+      }
     }
-
-    const { data: clubRows, error: clubError } = await supabase
-      .from('clubs')
-      .select('*')
-      .in('id', clubIds);
-
-    if (clubError) {
-      console.error(clubError);
-      setIsLoading(false);
-      return;
-    }
-
-    const clubList = (clubRows || []) as Club[];
-    setClubs(clubList);
-
-    const stored = localStorage.getItem(ACTIVE_CLUB_KEY);
-    const nextId =
-      (stored && clubList.some((c) => c.id === stored) && stored) ||
-      clubList[0]?.id ||
-      null;
-    setActiveClubIdState(nextId);
-    if (nextId) localStorage.setItem(ACTIVE_CLUB_KEY, nextId);
-
-    setIsLoading(false);
-  }, [user]);
+  }, [userId]);
 
   useEffect(() => {
+    latestRefresh.current = refreshClubs;
     refreshClubs();
+  }, [refreshClubs]);
+
+  // Memberships can change elsewhere (removed from a club, role changed on another device). Re-check when
+  // the tab becomes visible again, quietly; session refreshes deliberately no longer trigger a reload.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void refreshClubs({ silent: true });
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [refreshClubs]);
 
   const refreshSeason = useCallback(async () => {

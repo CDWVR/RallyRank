@@ -13,10 +13,15 @@ function authError(message: string, status: number): AuthError {
   return { name: 'AuthApiError', message, status };
 }
 
+export interface RefreshOutcome {
+  session: AuthSession | null;
+  refreshed: boolean;
+}
+
 export function createRemoteAuth(baseUrl = '/api/auth') {
   let session: AuthSession | null = null;
   let restored: Promise<void> | null = null;
-  let refreshing: Promise<AuthSession | null> | null = null;
+  let refreshing: Promise<RefreshOutcome> | null = null;
   const listeners = new Set<AuthListener>();
   // Keeps other tabs in step on sign-in/out; unsupported environments just skip it.
   const channel = typeof BroadcastChannel === 'undefined' ? null : new BroadcastChannel(CHANNEL);
@@ -45,23 +50,31 @@ export function createRemoteAuth(baseUrl = '/api/auth') {
     return { data: json, error: null };
   }
 
-  /** One refresh at a time per tab; concurrent callers share the result. */
-  function refresh(): Promise<AuthSession | null> {
+  /**
+   * One refresh at a time per tab; concurrent callers share the result. `refreshed` says whether the
+   * server issued a new session: a network error keeps the current one, which can't be told apart by
+   * the token alone (a token re-issued in the same second is byte-identical).
+   */
+  function refreshWithOutcome(): Promise<RefreshOutcome> {
     refreshing ??= call('/refresh')
-      .then(({ data, error }) => {
+      .then(({ data, error }): RefreshOutcome => {
         if (data?.session) {
           setSession(data.session, session ? 'TOKEN_REFRESHED' : 'SIGNED_IN', false);
-          return data.session;
+          return { session: data.session, refreshed: true };
         }
         // A network blip keeps the current session; only a definite rejection signs the user out.
-        if (error?.status === 0) return session;
+        if (error?.status === 0) return { session, refreshed: false };
         if (session) setSession(null, 'SIGNED_OUT', false);
-        return null;
+        return { session: null, refreshed: false };
       })
       .finally(() => {
         refreshing = null;
       });
     return refreshing;
+  }
+
+  function refresh(): Promise<AuthSession | null> {
+    return refreshWithOutcome().then((r) => r.session);
   }
 
   function ensureRestored(): Promise<void> {
@@ -119,7 +132,7 @@ export function createRemoteAuth(baseUrl = '/api/auth') {
     },
   };
 
-  return { auth, getAccessToken, refresh };
+  return { auth, getAccessToken, refresh, refreshWithOutcome };
 }
 
 export type RemoteAuth = ReturnType<typeof createRemoteAuth>;

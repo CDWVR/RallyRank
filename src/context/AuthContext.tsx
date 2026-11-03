@@ -18,6 +18,20 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext);
 
+/**
+ * A token refresh returns a new user object for the same person. Keeping the old one stops every
+ * effect that depends on `user` from re-running (and re-fetching) on each hourly refresh.
+ */
+function sameUser(prev: User | null, next: User | null): User | null {
+  if (!prev || !next) return next;
+  const unchanged =
+    prev.id === next.id &&
+    prev.email === next.email &&
+    prev.created_at === next.created_at &&
+    JSON.stringify(prev.user_metadata ?? {}) === JSON.stringify(next.user_metadata ?? {});
+  return unchanged ? prev : next;
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -28,13 +42,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession);
-      setUser(nextSession?.user ?? null);
+      setUser((prev) => sameUser(prev, nextSession?.user ?? null));
       setIsLoading(false);
     });
 
     supabase.auth.getSession().then(({ data: { session: existing } }) => {
       setSession(existing);
-      setUser(existing?.user ?? null);
+      setUser((prev) => sameUser(prev, existing?.user ?? null));
       setIsLoading(false);
     });
 

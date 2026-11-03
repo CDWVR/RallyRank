@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { Match } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/errors';
 
 const MatchDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -93,7 +94,7 @@ const MatchDetailPage: React.FC = () => {
       toast.success('Match undone — ratings restored');
       navigate('/app/matches');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   const disputeMutation = useMutation({
@@ -110,7 +111,7 @@ const MatchDetailPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['matches'] });
       toast.success(disputed ? 'Match marked as disputed' : 'Dispute flag cleared');
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: unknown) => toast.error(describeError(e)),
   });
 
   if (!match) return <p className="text-muted-foreground">Loading…</p>;

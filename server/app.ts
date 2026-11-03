@@ -37,7 +37,7 @@ export function createApp({ pool, jwtSecret, postgrestUrl, distDir, rateLimit, m
 
   // Railway's healthcheck: fails (503) while the database is unusable, so a broken deploy never takes traffic.
   app.get('/api/health', async (c) => {
-    const report = await checkHealth(pool, postgrestUrl, migrationProblem?.());
+    const report = await checkHealth(pool, postgrestUrl, jwtSecret, migrationProblem?.());
     c.header('Cache-Control', 'no-store');
     return c.json(report, report.ok ? 200 : 503);
   });

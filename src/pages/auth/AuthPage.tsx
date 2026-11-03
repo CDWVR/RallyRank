@@ -10,6 +10,7 @@ import { useAuth } from '@/context/AuthContext';
 import BrandMark from '@/components/BrandMark';
 import { sanitizeAppPath, savePostAuthRedirect } from '@/lib/authHelpers';
 import { cn } from '@/lib/utils';
+import { describeError } from '@/lib/errors';
 
 const AuthPage: React.FC = () => {
   const navigate = useNavigate();
@@ -79,7 +80,7 @@ const AuthPage: React.FC = () => {
     setLoading(false);
 
     if (error) {
-      toast.error(error.message);
+      toast.error(describeError(error));
       return;
     }
 
@@ -97,7 +98,7 @@ const AuthPage: React.FC = () => {
     setLoading(false);
 
     if (error) {
-      toast.error(error.message);
+      toast.error(describeError(error));
       return;
     }
 
